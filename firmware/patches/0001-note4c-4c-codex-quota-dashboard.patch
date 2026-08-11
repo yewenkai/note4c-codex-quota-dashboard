@@ -1,0 +1,895 @@
+diff --git a/firmware/CMakeLists.txt b/firmware/CMakeLists.txt
+index 58a021f..02d9e44 100644
+--- a/firmware/CMakeLists.txt
++++ b/firmware/CMakeLists.txt
+@@ -4,11 +4,18 @@
+ # CMakeLists in this exact order for cmake to work correctly
+ cmake_minimum_required(VERSION 3.16)
+ 
+-set(PROJECT_VER "6.5.9")
++set(PROJECT_VER "6.5.10")
+ 
+ # Local project components under main/components
+ list(APPEND EXTRA_COMPONENT_DIRS "${CMAKE_CURRENT_LIST_DIR}/main/components")
+ 
++# This repository is a NOTE4C-only firmware and has no camera hardware. The
++# upstream multi-board manifest still leaves camera/video components in the
++# component directories; exclude them so their IDF-private SPI implementation
++# cannot break an otherwise unrelated NOTE4C build.
++set(EXCLUDE_COMPONENTS
++    "espressif__esp_video;espressif__esp_cam_sensor;espressif__esp_sccb_intf;espressif__usb_host_uvc")
++
+ # Add this line to disable the specific warning
+ add_compile_options(-Wno-missing-field-initializers)
+ add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:-include${CMAKE_CURRENT_LIST_DIR}/compat/cxx_math_compat.h>")
+diff --git a/firmware/dependencies.lock b/firmware/dependencies.lock
+index 757a622..893b420 100644
+--- a/firmware/dependencies.lock
++++ b/firmware/dependencies.lock
+@@ -96,7 +96,7 @@ dependencies:
+       type: service
+     version: 0.5.3
+   espressif/dl_fft:
+-    component_hash: 7dadbd644c0d7ba4733cc3726ec4cff6edf27b043725e1115861dec1609a3d28
++    component_hash: a955ca29581de2177ddf25759273bd83f082b3c805e735fe6ee105858643989b
+     dependencies:
+     - name: idf
+       require: private
+@@ -104,7 +104,7 @@ dependencies:
+     source:
+       registry_url: https://components.espressif.com
+       type: service
+-    version: 0.3.1
++    version: 0.6.0
+   espressif/esp-dsp:
+     component_hash: 619639efc18cfa361a9e423739b9b0ffc14991effc6c027f955c2f2c3bf1754b
+     dependencies:
+@@ -133,31 +133,6 @@ dependencies:
+       registry_url: https://components.espressif.com/
+       type: service
+     version: 2.2.2
+-  espressif/esp_cam_sensor:
+-    component_hash: 35c1648ea87aac81da7a085d35f61b6d5ad88574bd0c5fdc4ab75efdef4ee6c1
+-    dependencies:
+-    - name: espressif/cmake_utilities
+-      registry_url: https://components.espressif.com
+-      require: private
+-      version: 0.*
+-    - name: espressif/esp_sccb_intf
+-      registry_url: https://components.espressif.com
+-      require: private
+-      version: '>=0.0.5'
+-    - name: idf
+-      require: private
+-      version: '>=5.3'
+-    source:
+-      registry_url: https://components.espressif.com/
+-      type: service
+-    targets:
+-    - esp32p4
+-    - esp32s3
+-    - esp32c3
+-    - esp32c5
+-    - esp32c6
+-    - esp32c61
+-    version: 1.5.2
+   espressif/esp_codec_dev:
+     component_hash: 0d9e9bc288156eb55f79338d312e1ebf8c9dfbd5e7d13ef0f20ccb031b4e15cf
+     dependencies:
+@@ -168,16 +143,6 @@ dependencies:
+       registry_url: https://components.espressif.com/
+       type: service
+     version: 1.5.4
+-  espressif/esp_image_effects:
+-    component_hash: a35037db02862d3cef6f72c25f422ae62da6e6c88219ce03c9ea24e0315ceaaa
+-    dependencies:
+-    - name: idf
+-      require: private
+-      version: '>=5.0'
+-    source:
+-      registry_url: https://components.espressif.com/
+-      type: service
+-    version: 1.0.1
+   espressif/esp_io_expander:
+     component_hash: 7b7f91270172e46ca4597e3874f48d8412e280e8c295559f5922ec38656e3e5f
+     dependencies:
+@@ -412,22 +377,6 @@ dependencies:
+     - esp32c5
+     - esp32c6
+     version: 0.6.1
+-  espressif/esp_sccb_intf:
+-    component_hash: c071b189e49f40940722aea01a5489f873385cc39cd5b14012341135b85d1a9d
+-    dependencies:
+-    - name: idf
+-      require: private
+-      version: '>=5.3'
+-    source:
+-      registry_url: https://components.espressif.com
+-      type: service
+-    version: 0.0.8
+-  espressif/esp_video:
+-    dependencies: []
+-    source:
+-      path: components/espressif__esp_video
+-      type: local
+-    version: 1.3.1
+   espressif/freetype:
+     component_hash: a4169cdd22b3572342b2d640d7082405b8895e3214539283601c03412589b65d
+     dependencies:
+@@ -472,46 +421,6 @@ dependencies:
+       registry_url: https://components.espressif.com/
+       type: service
+     version: 1.0.0
+-  espressif/usb:
+-    component_hash: 4f00ced5663505a368bafcb9bb6b2e4a5033cc5625b8f510755a75baadf4ff1d
+-    dependencies:
+-    - name: idf
+-      require: private
+-      version: '>=5.4'
+-    source:
+-      registry_url: https://components.espressif.com/
+-      type: service
+-    targets:
+-    - esp32s2
+-    - esp32s3
+-    - esp32s31
+-    - esp32p4
+-    - esp32h4
+-    - linux
+-    version: 1.4.0
+-  espressif/usb_host_uvc:
+-    component_hash: b0cb9a3a2eaa09dc6e5cc3e47e04d0a73e47c2d3dcfb3afce959224a1fe5fb5e
+-    dependencies:
+-    - name: idf
+-      require: private
+-      version: '>=5.0'
+-    - name: espressif/usb
+-      registry_url: https://components.espressif.com
+-      require: public
+-      rules:
+-      - if: idf_version >=6.0
+-      - if: target not in ["linux"]
+-      version: ^1.0.0
+-    source:
+-      registry_url: https://components.espressif.com/
+-      type: service
+-    targets:
+-    - esp32s2
+-    - esp32s3
+-    - esp32p4
+-    - esp32h4
+-    - linux
+-    version: 2.3.1
+   espressif2022/esp_emote_gfx:
+     component_hash: 67986ead33c11de895eb7ba9a069ea89949ec911ce7cf0989478cc9da2e54735
+     dependencies:
+@@ -555,7 +464,7 @@ dependencies:
+   idf:
+     source:
+       type: idf
+-    version: 6.0.0
++    version: 6.0.2
+   lvgl/lvgl:
+     component_hash: b702d642e03e95928046d5c6726558e6444e112420c77efa5fdb6650b0a13c5d
+     dependencies: []
+@@ -618,9 +527,7 @@ direct_dependencies:
+ - espressif/cjson
+ - espressif/cmake_utilities
+ - espressif/esp-sr
+-- espressif/esp_cam_sensor
+ - espressif/esp_codec_dev
+-- espressif/esp_image_effects
+ - espressif/esp_io_expander
+ - espressif/esp_io_expander_tca9554
+ - espressif/esp_io_expander_tca95xx_16bit
+@@ -641,12 +548,9 @@ direct_dependencies:
+ - espressif/esp_lvgl_port
+ - espressif/esp_mmap_assets
+ - espressif/esp_new_jpeg
+-- espressif/esp_video
+ - espressif/knob
+ - espressif/led_strip
+ - espressif/mqtt
+-- espressif/usb
+-- espressif/usb_host_uvc
+ - espressif2022/esp_emote_gfx
+ - espressif2022/image_player
+ - idf
+@@ -655,6 +559,6 @@ direct_dependencies:
+ - txp666/otto-emoji-gif-component
+ - waveshare/esp_lcd_sh8601
+ - waveshare/esp_lcd_touch_cst9217
+-manifest_hash: 1ea8c0ec4a08e0334b73568d48bfa5c55d81155c66f94f69f8635ebb37ad9738
++manifest_hash: 6f978ae85df73ceec85f59c050ce695bb3ebd5936aaaf52d3db2ba63b02529ff
+ target: esp32s3
+ version: 3.0.0
+diff --git a/firmware/docs/CODEX_QUOTA_DASHBOARD.md b/firmware/docs/CODEX_QUOTA_DASHBOARD.md
+new file mode 100644
+index 0000000..b9faa51
+--- /dev/null
++++ b/firmware/docs/CODEX_QUOTA_DASHBOARD.md
+@@ -0,0 +1,42 @@
++# Codex 三账号额度看板
++
++本固件基于 NOTE4C 四色屏现有图片存储和显示链路，增加了一个后台额度客户端。设备只访问自建 HTTPS 中继，不访问 OpenAI API，也不保存 Codex 账号令牌。
++
++## 行为
++
++- 联网后立即检查一次，之后按 `poll_minutes`（默认 5 分钟）检查 `manifest.json`。
++- 只有 manifest 的版本变化、帧大小为 30000 字节且 SHA-256 校验成功时，才覆盖保留图片 `codexquota` 并刷新彩屏。
++- manifest 未变化时不刷新墨水屏，避免无意义的全刷。
++- DNS、TLS、鉴权、下载、校验或存储失败时，保留上一张成功画面。
++- 账号和额度文字已经由 Mac 渲染进 400×300 的 BWRY 2bpp 帧，固件不接触 Codex 凭据。
++
++## 配置
++
++设备与电脑处于同一局域网时，向现有设置接口提交：
++
++```bash
++curl -X POST "http://NOTE4C_IP/settings" \
++  -H 'Content-Type: application/json' \
++  --data '{
++    "codex_dashboard": {
++      "enabled": true,
++      "base_url": "https://codex.example.com",
++      "username": "note4c",
++      "password": "DEVICE_READ_PASSWORD",
++      "poll_minutes": 5
++    }
++  }'
++```
++
++读取 `/settings` 可确认是否已配置，但响应不会返回密码。`base_url` 必须使用有效公有证书的 HTTPS 地址；设备通过 ESP-IDF CA bundle 校验证书。
++
++## 构建
++
++使用 ESP-IDF 6.0.2：
++
++```bash
++idf.py fullclean
++idf.py build
++```
++
++NOTE4C 没有摄像头，因此本板固件排除了上游多板工程中未使用的 camera/video 组件，避免这些组件依赖 ESP-IDF 私有 SPI 接口而阻断 NOTE4C 构建。
+diff --git a/firmware/main/CMakeLists.txt b/firmware/main/CMakeLists.txt
+index 07006bf..aeced39 100644
+--- a/firmware/main/CMakeLists.txt
++++ b/firmware/main/CMakeLists.txt
+@@ -53,6 +53,7 @@ set(SOURCES
+     "rawdraw/components/weather_card.cc"
+     "rawdraw/components/calendar.cc"
+     "common/weather_api.cc"
++    "common/codex_quota_client.cc"
+     "common/photo_storage.cc"
+     "common/photo_downloader.cc"
+     "common/storage_manager.cc"
+@@ -148,5 +149,5 @@ target_compile_definitions(
+     BOARD_NAME=\"zectrix-s3-epaper-4.2\"
+     BUILTIN_TEXT_FONT=SourceHanSansSC_Regular_slim
+     BUILTIN_ICON_FONT=font_zectrix_16_1
+-    PROJECT_VER=\"6.5.9\"  # F5: Make version available to renderer code
++    PROJECT_VER=\"6.5.10\"  # F5: Make version available to renderer code
+ )
+diff --git a/firmware/main/application.cc b/firmware/main/application.cc
+index c2e961b..5883f74 100644
+--- a/firmware/main/application.cc
++++ b/firmware/main/application.cc
+@@ -3,6 +3,7 @@
+ #include "boards/zectrix-s3-epaper-4.2/custom_lcd_display.h"
+ #include "boards/zectrix-s3-epaper-4.2/config.h"
+ #include "board.h"
++#include "common/codex_quota_client.h"
+ #include "common/photo_storage.h"
+ #include "display.h"
+ #include "settings.h"
+@@ -144,6 +145,9 @@ void Application::Initialize() {
+     } else {
+         ESP_LOGW(kTag, "Photo storage init failed");
+     }
++    codex_quota_client_start([this]() {
++        codex_dashboard_pending_.store(true, std::memory_order_release);
++    });
+ 
+     auto* lcd = static_cast<CustomLcdDisplay*>(display);
+     rawdraw_ui_manager_ = std::make_unique<ui::RawDrawUiManager>();
+@@ -289,6 +293,7 @@ void Application::Initialize() {
+             case NetworkEvent::Connected:
+                 ESP_LOGI(kTag, "WiFi connected: %s", data.c_str());
+                 wifi_connected_.store(true, std::memory_order_release);
++                codex_quota_client_set_connected(true);
+                 StartSntpClockSyncOnce();
+                 if (rawdraw_ui_manager_ && !rawdraw_ui_manager_->IsLanHttpServerRunning()) {
+                     const std::string ip = data.empty() ? WifiManager::GetInstance().GetIpAddress() : data;
+@@ -314,6 +319,7 @@ void Application::Initialize() {
+             case NetworkEvent::Disconnected:
+                 ESP_LOGI(kTag, "WiFi disconnected");
+                 wifi_connected_.store(false, std::memory_order_release);
++                codex_quota_client_set_connected(false);
+                 if (rawdraw_ui_manager_ && rawdraw_ui_manager_->IsLanHttpServerRunning()) {
+                     rawdraw_ui_manager_->StopLanHttpServer();
+                 }
+@@ -322,11 +328,13 @@ void Application::Initialize() {
+             case NetworkEvent::Connecting:
+             case NetworkEvent::Scanning:
+                 wifi_connected_.store(false, std::memory_order_release);
++                codex_quota_client_set_connected(false);
+                 UpdateStatusBarForUi();
+                 break;
+             case NetworkEvent::WifiConfigModeEnter:
+                 ESP_LOGI(kTag, "WiFi config mode entered: %s", data.c_str());
+                 wifi_connected_.store(false, std::memory_order_release);
++                codex_quota_client_set_connected(false);
+                 if (rawdraw_ui_manager_) {
+                     auto& wifi = WifiManager::GetInstance();
+                     rawdraw_ui_manager_->ShowWifiConfigPage(wifi.GetApSsid(),
+@@ -344,6 +352,8 @@ void Application::Initialize() {
+                 }
+                 wifi_connected_.store(WifiManager::GetInstance().IsConnected(),
+                                       std::memory_order_release);
++                codex_quota_client_set_connected(
++                    wifi_connected_.load(std::memory_order_acquire));
+                 UpdateStatusBarForUi();
+                 break;
+             case NetworkEvent::ModemDetecting:
+@@ -352,6 +362,7 @@ void Application::Initialize() {
+             case NetworkEvent::ModemErrorInitFailed:
+             case NetworkEvent::ModemErrorTimeout:
+                 wifi_connected_.store(false, std::memory_order_release);
++                codex_quota_client_set_connected(false);
+                 UpdateStatusBarForUi();
+                 break;
+         }
+@@ -531,6 +542,12 @@ void Application::EnterManualSleep() {
+ 
+ void Application::Run() {
+     while (true) {
++        if (codex_dashboard_pending_.exchange(false, std::memory_order_acq_rel) &&
++            rawdraw_ui_manager_) {
++            if (!rawdraw_ui_manager_->ShowPhotoById("codexquota")) {
++                ESP_LOGW(kTag, "Verified Codex quota frame could not be shown");
++            }
++        }
+         if (rawdraw_ui_manager_) {
+             rawdraw_ui_manager_->PumpClockRefresh();
+         }
+diff --git a/firmware/main/application.h b/firmware/main/application.h
+index 731b00c..8d35071 100644
+--- a/firmware/main/application.h
++++ b/firmware/main/application.h
+@@ -53,6 +53,7 @@ private:
+ 
+     std::atomic<DeviceState> state_{kDeviceStateUnknown};
+     std::atomic<bool> wifi_connected_{false};
++    std::atomic<bool> codex_dashboard_pending_{false};
+     AudioService audio_service_;
+     std::unique_ptr<ui::RawDrawUiManager> rawdraw_ui_manager_;
+     esp_timer_handle_t sleep_timer_ = nullptr;
+diff --git a/firmware/main/common/codex_quota_client.cc b/firmware/main/common/codex_quota_client.cc
+new file mode 100644
+index 0000000..8f18833
+--- /dev/null
++++ b/firmware/main/common/codex_quota_client.cc
+@@ -0,0 +1,328 @@
++#include "codex_quota_client.h"
++
++#include "common/photo_storage.h"
++#include "settings.h"
++
++#include <cJSON.h>
++#include <esp_crt_bundle.h>
++#include <esp_heap_caps.h>
++#include <esp_http_client.h>
++#include <esp_log.h>
++#include <freertos/FreeRTOS.h>
++#include <freertos/task.h>
++#include <psa/crypto.h>
++
++#include <algorithm>
++#include <atomic>
++#include <cctype>
++#include <cstdio>
++#include <cstring>
++#include <ctime>
++#include <functional>
++#include <string>
++
++namespace {
++
++constexpr char kTag[] = "CodexQuota";
++constexpr char kNamespace[] = "codex_dash";
++constexpr char kEnabledKey[] = "enabled";
++constexpr char kBaseUrlKey[] = "base_url";
++constexpr char kUsernameKey[] = "username";
++constexpr char kPasswordKey[] = "password";
++constexpr char kPollMinutesKey[] = "poll_min";
++constexpr char kRevisionKey[] = "revision";
++constexpr char kPhotoId[] = "codexquota";
++constexpr size_t kManifestCapacity = 3072;
++constexpr size_t kFrameSize = 400 * 300 / 4;
++
++std::atomic<bool> s_connected{false};
++std::atomic<bool> s_sync_requested{false};
++std::atomic<bool> s_started{false};
++std::function<void()> s_on_frame_ready;
++std::string s_session_revision;
++
++struct ClientConfig {
++    bool enabled = false;
++    std::string base_url;
++    std::string username;
++    std::string password;
++    int poll_minutes = 5;
++};
++
++struct HttpBuffer {
++    uint8_t* data = nullptr;
++    size_t capacity = 0;
++    size_t length = 0;
++    bool overflow = false;
++};
++
++struct Manifest {
++    std::string revision;
++    std::string path;
++    std::string sha256;
++    int64_t generated_at = 0;
++};
++
++ClientConfig LoadConfig() {
++    Settings nvs(kNamespace, false);
++    ClientConfig config;
++    config.enabled = nvs.GetBool(kEnabledKey, false);
++    config.base_url = nvs.GetString(kBaseUrlKey);
++    config.username = nvs.GetString(kUsernameKey, "note4c");
++    config.password = nvs.GetString(kPasswordKey);
++    config.poll_minutes = static_cast<int>(
++        std::clamp<int32_t>(nvs.GetInt(kPollMinutesKey, 5), 1, 60));
++    while (!config.base_url.empty() && config.base_url.back() == '/') {
++        config.base_url.pop_back();
++    }
++    return config;
++}
++
++bool IsSafeHttpsBaseUrl(const std::string& url) {
++    return url.rfind("https://", 0) == 0 && url.size() <= 255 && url.find_first_of("\r\n") == std::string::npos;
++}
++
++bool IsSafeFramePath(const std::string& path) {
++    if (path.rfind("frames/", 0) != 0 || path.find("..") != std::string::npos || path.size() > 96) {
++        return false;
++    }
++    return std::all_of(path.begin(), path.end(), [](unsigned char ch) {
++        return std::isalnum(ch) || ch == '/' || ch == '.' || ch == '-' || ch == '_';
++    });
++}
++
++bool IsSha256(const std::string& value) {
++    return value.size() == 64 && std::all_of(value.begin(), value.end(), [](unsigned char ch) {
++        return std::isdigit(ch) || (ch >= 'a' && ch <= 'f');
++    });
++}
++
++esp_err_t HttpEvent(esp_http_client_event_t* event) {
++    if (event->event_id != HTTP_EVENT_ON_DATA || event->data_len <= 0) return ESP_OK;
++    auto* buffer = static_cast<HttpBuffer*>(event->user_data);
++    if (!buffer || !buffer->data || buffer->length + event->data_len > buffer->capacity) {
++        if (buffer) buffer->overflow = true;
++        return ESP_FAIL;
++    }
++    memcpy(buffer->data + buffer->length, event->data, event->data_len);
++    buffer->length += event->data_len;
++    return ESP_OK;
++}
++
++bool HttpGet(const ClientConfig& dashboard, const std::string& url, HttpBuffer* output) {
++    if (!output || !output->data || output->capacity == 0) return false;
++    output->length = 0;
++    output->overflow = false;
++
++    esp_http_client_config_t config = {};
++    config.url = url.c_str();
++    config.method = HTTP_METHOD_GET;
++    config.event_handler = HttpEvent;
++    config.user_data = output;
++    config.username = dashboard.username.c_str();
++    config.password = dashboard.password.c_str();
++    config.auth_type = HTTP_AUTH_TYPE_BASIC;
++    config.timeout_ms = 15000;
++    config.disable_auto_redirect = false;
++    config.crt_bundle_attach = esp_crt_bundle_attach;
++
++    esp_http_client_handle_t client = esp_http_client_init(&config);
++    if (!client) {
++        ESP_LOGE(kTag, "Failed to initialize HTTPS client");
++        return false;
++    }
++    esp_err_t result = esp_http_client_perform(client);
++    const int status = esp_http_client_get_status_code(client);
++    esp_http_client_cleanup(client);
++    if (result != ESP_OK || status != 200 || output->overflow) {
++        ESP_LOGW(kTag, "GET failed: status=%d err=%s overflow=%d url=%s",
++                 status, esp_err_to_name(result), output->overflow ? 1 : 0, url.c_str());
++        return false;
++    }
++    return true;
++}
++
++bool ParseManifest(const uint8_t* data, size_t length, Manifest* manifest) {
++    if (!data || !manifest || length == 0 || length >= kManifestCapacity) return false;
++    std::string json(reinterpret_cast<const char*>(data), length);
++    cJSON* root = cJSON_ParseWithLength(json.c_str(), json.size());
++    if (!root) return false;
++
++    bool valid = false;
++    cJSON* schema = cJSON_GetObjectItemCaseSensitive(root, "schemaVersion");
++    cJSON* revision = cJSON_GetObjectItemCaseSensitive(root, "revision");
++    cJSON* generated_at = cJSON_GetObjectItemCaseSensitive(root, "generatedAt");
++    cJSON* frame = cJSON_GetObjectItemCaseSensitive(root, "frame");
++    cJSON* path = frame ? cJSON_GetObjectItemCaseSensitive(frame, "path") : nullptr;
++    cJSON* sha = frame ? cJSON_GetObjectItemCaseSensitive(frame, "sha256") : nullptr;
++    cJSON* size = frame ? cJSON_GetObjectItemCaseSensitive(frame, "size") : nullptr;
++    cJSON* format = frame ? cJSON_GetObjectItemCaseSensitive(frame, "format") : nullptr;
++    cJSON* width = frame ? cJSON_GetObjectItemCaseSensitive(frame, "width") : nullptr;
++    cJSON* height = frame ? cJSON_GetObjectItemCaseSensitive(frame, "height") : nullptr;
++
++    if (cJSON_IsNumber(schema) && schema->valueint == 1 &&
++        cJSON_IsString(revision) && revision->valuestring &&
++        cJSON_IsNumber(generated_at) &&
++        cJSON_IsString(path) && path->valuestring &&
++        cJSON_IsString(sha) && sha->valuestring &&
++        cJSON_IsNumber(size) && size->valueint == static_cast<int>(kFrameSize) &&
++        cJSON_IsString(format) && strcmp(format->valuestring, "bwry2bpp") == 0 &&
++        cJSON_IsNumber(width) && width->valueint == 400 &&
++        cJSON_IsNumber(height) && height->valueint == 300) {
++        manifest->revision = revision->valuestring;
++        manifest->path = path->valuestring;
++        manifest->sha256 = sha->valuestring;
++        manifest->generated_at = static_cast<int64_t>(generated_at->valuedouble);
++        valid = IsSha256(manifest->revision) && manifest->revision == manifest->sha256 &&
++                IsSafeFramePath(manifest->path) && manifest->generated_at > 0;
++    }
++    cJSON_Delete(root);
++    return valid;
++}
++
++std::string Sha256Hex(const uint8_t* bytes, size_t length) {
++    uint8_t digest[32] = {};
++    size_t digest_length = 0;
++    if (psa_crypto_init() != PSA_SUCCESS ||
++        psa_hash_compute(PSA_ALG_SHA_256, bytes, length, digest, sizeof(digest),
++                         &digest_length) != PSA_SUCCESS ||
++        digest_length != sizeof(digest)) {
++        return {};
++    }
++    char hex[65] = {};
++    for (size_t index = 0; index < sizeof(digest); ++index) {
++        snprintf(hex + index * 2, 3, "%02x", digest[index]);
++    }
++    return hex;
++}
++
++bool SaveFrame(const uint8_t* frame, const Manifest& manifest) {
++    PhotoInfo info = {};
++    strlcpy(info.id, kPhotoId, sizeof(info.id));
++    strlcpy(info.title, "Codex 三账号额度", sizeof(info.title));
++    info.width = 400;
++    info.height = 300;
++    info.file_size = kFrameSize;
++    info.timestamp = static_cast<uint32_t>(manifest.generated_at);
++
++    time_t timestamp = static_cast<time_t>(manifest.generated_at);
++    struct tm local = {};
++    localtime_r(&timestamp, &local);
++    strftime(info.date, sizeof(info.date), "%Y-%m-%d %H:%M", &local);
++    strlcpy(info.location, "Codex 配额中继", sizeof(info.location));
++    strlcpy(info.body, "Business / Plus 额度；失败时保留上一张图", sizeof(info.body));
++    return photo_save(&info, frame) == 0;
++}
++
++bool SyncOnce(const ClientConfig& config) {
++    uint8_t manifest_bytes[kManifestCapacity] = {};
++    HttpBuffer manifest_buffer{manifest_bytes, kManifestCapacity - 1, 0, false};
++    const std::string manifest_url = config.base_url + "/manifest.json";
++    if (!HttpGet(config, manifest_url, &manifest_buffer)) return false;
++
++    Manifest manifest;
++    if (!ParseManifest(manifest_bytes, manifest_buffer.length, &manifest)) {
++        ESP_LOGW(kTag, "Invalid relay manifest; keeping previous frame");
++        return false;
++    }
++
++    Settings current(kNamespace, false);
++    const std::string stored_revision = current.GetString(kRevisionKey);
++    if (stored_revision == manifest.revision && photo_exists(kPhotoId)) {
++        if (s_session_revision != manifest.revision) {
++            s_session_revision = manifest.revision;
++            if (s_on_frame_ready) s_on_frame_ready();
++        }
++        ESP_LOGI(kTag, "Manifest unchanged: %.12s", manifest.revision.c_str());
++        return true;
++    }
++
++    auto* frame = static_cast<uint8_t*>(
++        heap_caps_malloc(kFrameSize, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
++    if (!frame) frame = static_cast<uint8_t*>(malloc(kFrameSize));
++    if (!frame) {
++        ESP_LOGE(kTag, "Unable to allocate %u-byte frame", static_cast<unsigned>(kFrameSize));
++        return false;
++    }
++    HttpBuffer frame_buffer{frame, kFrameSize, 0, false};
++    const std::string frame_url = config.base_url + "/" + manifest.path;
++    bool success = HttpGet(config, frame_url, &frame_buffer) &&
++                   frame_buffer.length == kFrameSize &&
++                   Sha256Hex(frame, frame_buffer.length) == manifest.sha256;
++    if (!success) {
++        ESP_LOGW(kTag, "Frame validation failed; keeping previous frame");
++        free(frame);
++        return false;
++    }
++    success = SaveFrame(frame, manifest);
++    free(frame);
++    if (!success) {
++        ESP_LOGW(kTag, "Frame storage failed; revision not advanced");
++        return false;
++    }
++
++    {
++        Settings writable(kNamespace, true);
++        writable.SetString(kRevisionKey, manifest.revision);
++    }
++    s_session_revision = manifest.revision;
++    ESP_LOGI(kTag, "Stored verified frame revision=%.12s", manifest.revision.c_str());
++    if (s_on_frame_ready) s_on_frame_ready();
++    return true;
++}
++
++void Worker(void*) {
++    int seconds_until_poll = 0;
++    while (true) {
++        if (!s_connected.load(std::memory_order_acquire)) {
++            seconds_until_poll = 0;
++            vTaskDelay(pdMS_TO_TICKS(1000));
++            continue;
++        }
++        const bool requested = s_sync_requested.exchange(false, std::memory_order_acq_rel);
++        if (!requested && seconds_until_poll > 0) {
++            --seconds_until_poll;
++            vTaskDelay(pdMS_TO_TICKS(1000));
++            continue;
++        }
++
++        const ClientConfig config = LoadConfig();
++        seconds_until_poll = config.poll_minutes * 60;
++        if (!config.enabled) {
++            seconds_until_poll = 5;
++        } else if (!IsSafeHttpsBaseUrl(config.base_url) || config.username.empty() || config.password.empty()) {
++            ESP_LOGW(kTag, "Dashboard config incomplete; HTTPS URL, username and password are required");
++            seconds_until_poll = 30;
++        } else if (time(nullptr) < 1735689600) {
++            // Certificate validation needs a sane wall clock. SNTP starts on
++            // the same Wi-Fi event, so wait briefly instead of treating first
++            // boot as a network failure.
++            ESP_LOGI(kTag, "Waiting for SNTP before HTTPS quota sync");
++            seconds_until_poll = 5;
++        } else {
++            SyncOnce(config);
++        }
++        vTaskDelay(pdMS_TO_TICKS(1000));
++    }
++}
++
++}  // namespace
++
++void codex_quota_client_start(std::function<void()> on_frame_ready) {
++    s_on_frame_ready = std::move(on_frame_ready);
++    if (s_started.exchange(true, std::memory_order_acq_rel)) return;
++    BaseType_t result = xTaskCreate(Worker, "codex_quota", 8192, nullptr, 4, nullptr);
++    if (result != pdPASS) {
++        s_started.store(false, std::memory_order_release);
++        ESP_LOGE(kTag, "Failed to create quota sync task");
++    }
++}
++
++void codex_quota_client_set_connected(bool connected) {
++    s_connected.store(connected, std::memory_order_release);
++    if (connected) s_sync_requested.store(true, std::memory_order_release);
++}
++
++void codex_quota_client_request_sync() {
++    s_sync_requested.store(true, std::memory_order_release);
++}
+diff --git a/firmware/main/common/codex_quota_client.h b/firmware/main/common/codex_quota_client.h
+new file mode 100644
+index 0000000..cf14945
+--- /dev/null
++++ b/firmware/main/common/codex_quota_client.h
+@@ -0,0 +1,18 @@
++#ifndef CODEX_QUOTA_CLIENT_H
++#define CODEX_QUOTA_CLIENT_H
++
++#include <functional>
++
++// Starts the single background worker. The callback is invoked only after a
++// verified frame is available in photo storage (including the retained frame
++// found on the first successful manifest check after boot).
++void codex_quota_client_start(std::function<void()> on_frame_ready);
++
++// Network events gate all outbound requests. A transition to connected asks
++// the worker to check the manifest immediately.
++void codex_quota_client_set_connected(bool connected);
++
++// Called after the LAN settings endpoint changes the NVS configuration.
++void codex_quota_client_request_sync();
++
++#endif  // CODEX_QUOTA_CLIENT_H
+diff --git a/firmware/main/idf_component.yml b/firmware/main/idf_component.yml
+index fe49097..182cdbd 100644
+--- a/firmware/main/idf_component.yml
++++ b/firmware/main/idf_component.yml
+@@ -24,14 +24,6 @@ dependencies:
+   espressif/esp-sr: ~2.2.0
+   espressif/button: ~4.1.3
+   espressif/knob: ^1.0.0
+-  espressif/esp_video:
+-    version: ==1.3.1   # for compatibility. update version may need to modify this project code.
+-    rules:
+-    - if: target not in [esp32]
+-  espressif/esp_image_effects:
+-    version: ^1.0.1
+-    rules:
+-    - if: target not in [esp32]
+   espressif/esp_lcd_touch_ft5x06: ~1.0.7
+   espressif/esp_lcd_touch_gt911: ^1
+   espressif/esp_lcd_touch_gt1151: ^1
+diff --git a/firmware/main/ui/rawdraw_ui_manager.cc b/firmware/main/ui/rawdraw_ui_manager.cc
+index c71942f..ae1e27a 100644
+--- a/firmware/main/ui/rawdraw_ui_manager.cc
++++ b/firmware/main/ui/rawdraw_ui_manager.cc
+@@ -1325,7 +1325,15 @@ bool RawDrawUiManager::ShowPhotoById(const std::string& photo_id) {
+         return false;
+     }
+     photo_gallery_renderer_->EnterFullscreenMode();
+-    SwitchPage(RawDrawPageId::Gallery);
++    if (current_page_ == RawDrawPageId::Gallery) {
++        // SwitchPage deliberately ignores same-page navigation. Quota updates
++        // overwrite the reserved photo while it is commonly already visible,
++        // so explicitly redraw it instead of leaving the old framebuffer on
++        // the e-paper panel.
++        RefreshActivePage(true);
++    } else {
++        SwitchPage(RawDrawPageId::Gallery);
++    }
+     ESP_LOGI(kTag, "Show photo fullscreen from HTTP: id=%s", photo_id.c_str());
+     return true;
+ }
+diff --git a/firmware/main/ui/renderers/rawdraw/ap_transfer_server.cc b/firmware/main/ui/renderers/rawdraw/ap_transfer_server.cc
+index 3371fac..f3c6cd8 100644
+--- a/firmware/main/ui/renderers/rawdraw/ap_transfer_server.cc
++++ b/firmware/main/ui/renderers/rawdraw/ap_transfer_server.cc
+@@ -5,6 +5,7 @@
+ 
+ #include "ap_transfer_server.h"
+ #include "boards/zectrix-s3-epaper-4.2/config.h"
++#include "common/codex_quota_client.h"
+ #include "common/photo_storage.h"
+ #include "settings.h"
+ #include "wifi_manager.h"
+@@ -20,6 +21,7 @@
+ #include <lwip/ip_addr.h>
+ #include <cJSON.h>
+ 
++#include <algorithm>
+ #include <cstring>
+ #include <cstdio>
+ #include <cstdlib>
+@@ -39,6 +41,7 @@ constexpr const char* kApPassword = "12345678";
+ constexpr const char* kApIp = "192.168.4.1";
+ constexpr const char* kGalleryNamespace = "gallery";
+ constexpr const char* kSlideshowIntervalKey = "slide_min";
++constexpr const char* kCodexNamespace = "codex_dash";
+ 
+ // Screen dimensions
+ constexpr int kScreenWidth = 400;
+@@ -676,6 +679,7 @@ esp_err_t ApTransferServer::SettingsHandler(httpd_req_t* req) {
+     bool close_service = false;
+     bool stop_wifi = false;
+     bool enter_sleep = false;
++    bool codex_settings_changed = false;
+ 
+     if (req->method == HTTP_POST) {
+         cJSON* root = ReadJsonBody(req);
+@@ -709,7 +713,41 @@ esp_err_t ApTransferServer::SettingsHandler(httpd_req_t* req) {
+             stop_wifi = true;
+             enter_sleep = true;
+         }
++        cJSON* codex = cJSON_GetObjectItemCaseSensitive(root, "codex_dashboard");
++        if (cJSON_IsObject(codex)) {
++            Settings codex_nvs(kCodexNamespace, true);
++            cJSON* enabled = cJSON_GetObjectItemCaseSensitive(codex, "enabled");
++            if (cJSON_IsBool(enabled)) {
++                codex_nvs.SetBool("enabled", cJSON_IsTrue(enabled));
++                codex_settings_changed = true;
++            }
++            cJSON* base_url = cJSON_GetObjectItemCaseSensitive(codex, "base_url");
++            if (cJSON_IsString(base_url) && base_url->valuestring &&
++                strncmp(base_url->valuestring, "https://", 8) == 0 &&
++                strlen(base_url->valuestring) <= 255) {
++                codex_nvs.SetString("base_url", base_url->valuestring);
++                codex_settings_changed = true;
++            }
++            cJSON* username = cJSON_GetObjectItemCaseSensitive(codex, "username");
++            if (cJSON_IsString(username) && username->valuestring &&
++                strlen(username->valuestring) <= 64) {
++                codex_nvs.SetString("username", username->valuestring);
++                codex_settings_changed = true;
++            }
++            cJSON* password = cJSON_GetObjectItemCaseSensitive(codex, "password");
++            if (cJSON_IsString(password) && password->valuestring &&
++                strlen(password->valuestring) <= 128) {
++                codex_nvs.SetString("password", password->valuestring);
++                codex_settings_changed = true;
++            }
++            cJSON* poll = cJSON_GetObjectItemCaseSensitive(codex, "poll_minutes");
++            if (cJSON_IsNumber(poll) && poll->valueint >= 1 && poll->valueint <= 60) {
++                codex_nvs.SetInt("poll_min", poll->valueint);
++                codex_settings_changed = true;
++            }
++        }
+         cJSON_Delete(root);
++        if (codex_settings_changed) codex_quota_client_request_sync();
+     }
+ 
+     const char* mode = "ap";
+@@ -718,19 +756,39 @@ esp_err_t ApTransferServer::SettingsHandler(httpd_req_t* req) {
+         mode = self->mode_ == TransferMode::kLan ? "lan" : "ap";
+         ip = self->ap_ip_.empty() ? kApIp : self->ap_ip_.c_str();
+     }
+-    char response[256];
+-    snprintf(response, sizeof(response),
+-             "{\"success\":true,\"slideshow_interval\":%d,\"service_running\":%s,"
+-             "\"mode\":\"%s\",\"ip\":\"%s\",\"url\":\"http://%s/\","
+-             "\"closing\":%s,\"sleep\":%s}",
+-             interval,
+-             self && self->IsRunning() ? "true" : "false",
+-             mode,
+-             ip,
+-             ip,
+-             close_service ? "true" : "false",
+-             enter_sleep ? "true" : "false");
+-    SendJson(req, response);
++    Settings codex_nvs(kCodexNamespace, false);
++    const std::string codex_url = codex_nvs.GetString("base_url");
++    const std::string codex_user = codex_nvs.GetString("username", "note4c");
++    const bool codex_enabled = codex_nvs.GetBool("enabled", false);
++    const bool codex_configured = !codex_url.empty() && !codex_user.empty() &&
++                                  !codex_nvs.GetString("password").empty();
++    const int codex_poll = static_cast<int>(
++        std::clamp<int32_t>(codex_nvs.GetInt("poll_min", 5), 1, 60));
++
++    cJSON* response = cJSON_CreateObject();
++    cJSON_AddBoolToObject(response, "success", true);
++    cJSON_AddNumberToObject(response, "slideshow_interval", interval);
++    cJSON_AddBoolToObject(response, "service_running", self && self->IsRunning());
++    cJSON_AddStringToObject(response, "mode", mode);
++    cJSON_AddStringToObject(response, "ip", ip);
++    const std::string local_url = std::string("http://") + ip + "/";
++    cJSON_AddStringToObject(response, "url", local_url.c_str());
++    cJSON_AddBoolToObject(response, "closing", close_service);
++    cJSON_AddBoolToObject(response, "sleep", enter_sleep);
++    cJSON* codex = cJSON_AddObjectToObject(response, "codex_dashboard");
++    cJSON_AddBoolToObject(codex, "enabled", codex_enabled);
++    cJSON_AddBoolToObject(codex, "configured", codex_configured);
++    cJSON_AddStringToObject(codex, "base_url", codex_url.c_str());
++    cJSON_AddStringToObject(codex, "username", codex_user.c_str());
++    cJSON_AddNumberToObject(codex, "poll_minutes", codex_poll);
++    char* response_json = cJSON_PrintUnformatted(response);
++    cJSON_Delete(response);
++    if (!response_json) {
++        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "No memory");
++        return ESP_FAIL;
++    }
++    SendJson(req, response_json);
++    free(response_json);
+     if (close_service || stop_wifi || enter_sleep) {
+         ESP_LOGI(kTag, "Web control requested: close_service=%d stop_wifi=%d sleep=%d",
+                  close_service ? 1 : 0,

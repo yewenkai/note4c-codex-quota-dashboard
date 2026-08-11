@@ -1,0 +1,18 @@
+{
+  "registryPath": "/Users/YOUR_NAME/.codex/accounts/registry.json",
+  "codexAuthBin": "/opt/homebrew/bin/codex-auth",
+  "expectedPaidAccounts": 3,
+  "maximumCacheAgeSeconds": 300,
+  "accountLabels": {
+    "business.one@example.com": "Business A",
+    "business.two@example.com": "Business B",
+    "plus@example.com": "Personal Plus"
+  },
+  "stateDirectory": "/Users/YOUR_NAME/Library/Application Support/note4c-codex-quota",
+  "publisher": {
+    "host": "quota.example.com",
+    "user": "note4c-publisher",
+    "identityFile": "/Users/YOUR_NAME/.ssh/note4c_quota_publisher_ed25519",
+    "remoteRoot": "/srv/note4c/public"
+  }
+}

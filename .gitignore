@@ -1,0 +1,12 @@
+.DS_Store
+.env
+*.local
+*.log
+*.htpasswd
+relay/target/
+deploy/macos/note4c-sync.json
+deploy/macos/codex-note4c-relay
+firmware/upstream/
+firmware/build/
+firmware/sdkconfig
+state/

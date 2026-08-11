@@ -1,0 +1,2 @@
+# Patch context lines intentionally carry the unified-diff prefix.
+*.patch -whitespace

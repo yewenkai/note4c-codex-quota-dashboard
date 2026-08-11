@@ -1,0 +1,25 @@
+[package]
+name = "note4c-codex-quota-dashboard"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+description = "Render and publish multi-account Codex quota frames for ZECTRIX NOTE4C"
+repository = "https://github.com/yewenkai/note4c-codex-quota-dashboard"
+rust-version = "1.85"
+
+[[bin]]
+name = "codex-note4c-relay"
+path = "src/bin/codex-note4c-relay.rs"
+
+[dependencies]
+embedded-graphics = "0.8"
+image = { version = "0.25", default-features = false, features = ["png"] }
+libc = "0.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+thiserror = "2"
+u8g2-fonts = "0.7"
+
+[dev-dependencies]
+tempfile = "3"

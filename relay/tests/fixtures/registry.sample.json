@@ -1,0 +1,55 @@
+{
+  "schema_version": 3,
+  "active_account_key": "business-a",
+  "accounts": [
+    {
+      "account_key": "business-a",
+      "email": "business.one@example.com",
+      "plan": "team",
+      "last_usage": {
+        "plan_type": "team",
+        "primary": {
+          "used_percent": 23,
+          "window_minutes": 10080,
+          "resets_at": 1800000000
+        }
+      },
+      "last_usage_at": 1790000000
+    },
+    {
+      "account_key": "business-b",
+      "email": "business.two@example.com",
+      "plan": "business",
+      "last_usage": {
+        "plan_type": "business",
+        "primary": {
+          "used_percent": 51,
+          "window_minutes": 10080,
+          "resets_at": 1800000000
+        }
+      },
+      "last_usage_at": 1790000000
+    },
+    {
+      "account_key": "plus-a",
+      "email": "plus@example.com",
+      "plan": "plus",
+      "last_usage": {
+        "plan_type": "plus",
+        "primary": {
+          "used_percent": 90,
+          "window_minutes": 10080,
+          "resets_at": 1800000000
+        }
+      },
+      "last_usage_at": 1790000000
+    },
+    {
+      "account_key": "free-a",
+      "email": "free@example.com",
+      "plan": "free",
+      "last_usage": null,
+      "last_usage_at": null
+    }
+  ]
+}

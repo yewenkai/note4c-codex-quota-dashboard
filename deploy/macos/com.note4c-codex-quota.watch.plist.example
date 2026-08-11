@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>io.github.note4c-codex-quota.watch</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/ABSOLUTE/PATH/codex-note4c-relay</string>
+    <string>sync</string>
+    <string>--config</string>
+    <string>/ABSOLUTE/PATH/note4c-sync.json</string>
+  </array>
+  <key>WatchPaths</key>
+  <array>
+    <string>/Users/YOUR_NAME/.codex/accounts/registry.json</string>
+  </array>
+  <key>ThrottleInterval</key>
+  <integer>30</integer>
+  <key>StandardOutPath</key>
+  <string>/tmp/note4c-codex-quota-watch.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/note4c-codex-quota-watch.err</string>
+</dict>
+</plist>
