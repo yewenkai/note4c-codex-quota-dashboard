@@ -84,8 +84,11 @@ cargo build --release
 ./target/release/codex-note4c-relay preview \
   --registry tests/fixtures/registry.sample.json \
   --output-bin /tmp/note4c-quota.bin \
-  --output-png /tmp/note4c-quota.png
+  --output-png /tmp/note4c-quota.png \
+  --generated-at 1786431600
 ```
+
+`--generated-at` 只用于让虚构 fixture 和文档图片可重复生成；真实同步始终使用当前时间。
 
 ## 2. 准备公网服务器
 

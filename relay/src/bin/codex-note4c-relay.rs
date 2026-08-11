@@ -26,10 +26,13 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             let registry = value_after(&mut args, "--registry")?;
             let output_bin = value_after(&mut args, "--output-bin")?;
             let output_png = value_after(&mut args, "--output-png")?;
+            let generated_at = match optional_generated_at(&mut args)? {
+                Some(value) => value,
+                None => now()?,
+            };
             ensure_no_args(args)?;
-            let now = now()?;
             let accounts = read_paid_accounts(registry, 3)?;
-            let frame = render_paid_accounts(&accounts, now)?;
+            let frame = render_paid_accounts(&accounts, generated_at)?;
             fs::write(&output_bin, frame.packed_bytes())?;
             fs::write(&output_png, frame.png_bytes()?)?;
             println!(
@@ -211,12 +214,31 @@ fn ensure_no_args(
     }
 }
 
+fn optional_generated_at(
+    args: &mut impl Iterator<Item = String>,
+) -> Result<Option<i64>, Box<dyn std::error::Error>> {
+    let Some(argument) = args.next() else {
+        return Ok(None);
+    };
+    if argument != "--generated-at" {
+        return Err(format!("未知参数：{argument}").into());
+    }
+    let value = args
+        .next()
+        .ok_or("--generated-at 缺少 Unix 时间戳")?
+        .parse::<i64>()?;
+    if value <= 0 {
+        return Err("--generated-at 必须为正整数".into());
+    }
+    Ok(Some(value))
+}
+
 fn now() -> Result<i64, std::time::SystemTimeError> {
     Ok(SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs() as i64)
 }
 
 fn usage() -> &'static str {
-    "用法：\n  codex-note4c-relay preview --registry PATH --output-bin PATH --output-png PATH\n  codex-note4c-relay sync --config PATH [--refresh]"
+    "用法：\n  codex-note4c-relay preview --registry PATH --output-bin PATH --output-png PATH [--generated-at UNIX_SECONDS]\n  codex-note4c-relay sync --config PATH [--refresh]"
 }
 
 #[cfg(test)]

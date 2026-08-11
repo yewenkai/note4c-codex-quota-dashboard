@@ -11,10 +11,10 @@
         "primary": {
           "used_percent": 23,
           "window_minutes": 10080,
-          "resets_at": 1800000000
+          "resets_at": 1786870800
         }
       },
-      "last_usage_at": 1790000000
+      "last_usage_at": 1786431600
     },
     {
       "account_key": "business-b",
@@ -25,10 +25,10 @@
         "primary": {
           "used_percent": 51,
           "window_minutes": 10080,
-          "resets_at": 1800000000
+          "resets_at": 1786870800
         }
       },
-      "last_usage_at": 1790000000
+      "last_usage_at": 1786431600
     },
     {
       "account_key": "plus-a",
@@ -39,10 +39,10 @@
         "primary": {
           "used_percent": 90,
           "window_minutes": 10080,
-          "resets_at": 1800000000
+          "resets_at": 1786870800
         }
       },
-      "last_usage_at": 1790000000
+      "last_usage_at": 1786431600
     },
     {
       "account_key": "free-a",
