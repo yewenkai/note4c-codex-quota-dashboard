@@ -6,7 +6,7 @@
 
 | 方向 | 端口 | 用途 |
 | --- | --- | --- |
-| Mac → OpenAI | HTTPS 443 | `codex-auth list --api` 刷新额度 |
+| Mac → OpenAI | HTTPS 443 | 顺序刷新器使用 `codex-auth` 本地认证快照读取额度 |
 | Mac → 公网服务器 | SSH 22 | 上传帧、预览和 manifest |
 | NOTE4C → 公网服务器 | HTTPS 443 | 只读拉取 manifest 和帧 |
 | 浏览器 → 公网服务器 | HTTPS 443 | 查看预览 |
@@ -105,8 +105,9 @@ sudo systemctl reload nginx
 编辑 `deploy/macos/note4c-sync.example.json` 的副本：
 
 - `registryPath`：`codex-auth` 注册表的绝对路径；
-- `codexAuthBin`：`command -v codex-auth` 的输出；
+- `codexAuthBin`：仓库内 `codex-auth-sequential-refresh.mjs` 的绝对路径；它使用 `codex-auth` 管理的认证快照顺序请求额度，避免多账号并发导致连接重置；
 - `expectedPaidAccounts`：当前布局必须为 `3`；
+- `refreshAttempts`：顺序刷新器已经自行重试，推荐设为 `1`；
 - `maximumCacheAgeSeconds`：文件监听发布允许的最大缓存年龄；
 - `accountLabels`：可选的邮箱到显示别名映射；
 - `stateDirectory`：本地生成文件目录；
@@ -148,7 +149,7 @@ launchctl bootstrap "gui/$(id -u)" \
 
 ## 故障时的保留策略
 
-- `codex-auth` 刷新失败：不生成、不发布；
+- 顺序刷新器任一付费账号最终失败：不改注册表、不生成、不发布；
 - 付费账号不是恰好 3 个：不发布；
 - 文件监听遇到超过 5 分钟的缓存：不发布；
 - SSH/SCP 失败：旧 manifest 保持不变；

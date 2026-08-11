@@ -1,7 +1,8 @@
 {
   "registryPath": "/Users/YOUR_NAME/.codex/accounts/registry.json",
-  "codexAuthBin": "/opt/homebrew/bin/codex-auth",
+  "codexAuthBin": "/ABSOLUTE/PATH/codex-auth-sequential-refresh.mjs",
   "expectedPaidAccounts": 3,
+  "refreshAttempts": 1,
   "maximumCacheAgeSeconds": 300,
   "accountLabels": {
     "business.one@example.com": "Business A",

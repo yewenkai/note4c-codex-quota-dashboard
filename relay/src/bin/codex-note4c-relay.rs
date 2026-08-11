@@ -84,6 +84,8 @@ fn sync(config_path: &Path, refresh: bool) -> Result<(), Box<dyn std::error::Err
     if refresh {
         refresh_paid_accounts(
             &config.codex_auth_bin,
+            &config.registry_path,
+            config.refresh_attempts,
             &accounts_before_refresh
                 .iter()
                 .map(|account| account.email.clone())
@@ -120,14 +122,22 @@ fn sync(config_path: &Path, refresh: bool) -> Result<(), Box<dyn std::error::Err
 
 fn refresh_paid_accounts(
     codex_auth_bin: &Path,
+    registry_path: &Path,
+    attempts: usize,
     expected_emails: &[String],
 ) -> Result<(), QuotaRelayError> {
+    if attempts == 0 || attempts > 10 {
+        return Err(QuotaRelayError::InvalidRegistry(
+            "refreshAttempts 必须在 1–10 之间".into(),
+        ));
+    }
     let mut successful = HashSet::new();
-    for attempt in 0..3 {
+    for attempt in 0..attempts {
         let output = Command::new(codex_auth_bin)
             .arg("list")
             .arg("--api")
             .arg("--debug")
+            .env("CODEX_AUTH_REGISTRY_PATH", registry_path)
             .output()?;
         if output.status.success() {
             let mut trace = String::from_utf8_lossy(&output.stderr).into_owned();
@@ -141,7 +151,7 @@ fn refresh_paid_accounts(
         {
             return Ok(());
         }
-        if attempt < 2 {
+        if attempt + 1 < attempts {
             thread::sleep(Duration::from_secs(2));
         }
     }
@@ -152,7 +162,7 @@ fn refresh_paid_accounts(
         .cloned()
         .collect::<Vec<_>>();
     Err(QuotaRelayError::InvalidRegistry(format!(
-        "以下付费账号连续三次未取得成功的实时额度响应：{}；拒绝覆盖现有画面",
+        "以下付费账号连续 {attempts} 次未取得成功的实时额度响应：{}；拒绝覆盖现有画面",
         missing.join(", ")
     )))
 }

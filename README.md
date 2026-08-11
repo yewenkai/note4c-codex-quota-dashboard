@@ -6,7 +6,7 @@ A self-hosted, multi-account Codex quota dashboard for the **ZECTRIX NOTE4C four
 
 ![Synthetic dashboard example](docs/images/dashboard-sample.png)
 
-The NOTE4C never talks to OpenAI. A Mac refreshes local `codex-auth` data, renders a 400×300 four-color frame, and publishes only the rendered frame plus a small manifest to your HTTPS server. The device polls that server and refreshes the panel only when the frame revision changes.
+The NOTE4C never talks to OpenAI. A Mac sequentially refreshes paid accounts from local `codex-auth` snapshots, renders a 400×300 four-color frame, and publishes only the rendered frame plus a small manifest to your HTTPS server. The device polls that server and refreshes the panel only when the frame revision changes.
 
 ## Highlights
 

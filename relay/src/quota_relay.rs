@@ -522,6 +522,8 @@ pub struct SyncConfig {
     pub expected_paid_accounts: usize,
     #[serde(default = "default_cache_age")]
     pub maximum_cache_age_seconds: i64,
+    #[serde(default = "default_refresh_attempts")]
+    pub refresh_attempts: usize,
     #[serde(default)]
     pub account_labels: HashMap<String, String>,
     pub state_directory: PathBuf,
@@ -533,6 +535,9 @@ fn default_expected_accounts() -> usize {
 }
 fn default_cache_age() -> i64 {
     300
+}
+fn default_refresh_attempts() -> usize {
+    3
 }
 
 #[derive(Clone, Debug, Deserialize)]

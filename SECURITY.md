@@ -3,7 +3,7 @@
 ## Sensitive data that stays local
 
 - Codex/OpenAI account tokens remain under the Mac user's `~/.codex` directory.
-- The relay reads `codex-auth`'s registry but never uploads registry JSON or tokens.
+- The sequential refresher reads `codex-auth`'s registry and local auth snapshots but never uploads registry JSON or tokens. Access tokens are sent only to the documented OpenAI usage endpoint from the Mac.
 - The SSH publishing key remains on the Mac.
 - The HTTPS read-only password is stored in the server password file and NOTE4C NVS; it must not be committed.
 

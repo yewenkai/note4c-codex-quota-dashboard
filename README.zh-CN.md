@@ -10,7 +10,7 @@
 
 NOTE4C 无法直接访问 OpenAI API，也不适合保存 Codex 登录令牌。本项目把链路拆成三段：
 
-1. Mac 上的 `codex-auth` 刷新多个账号的额度；
+1. Mac 使用 `codex-auth` 管理的本地认证快照，顺序刷新 3 个付费账号的额度；
 2. Rust relay 在本地生成 400×300、30,000 字节的 BWRY 2bpp 画面，再通过 SSH 发布到你的公网服务器；
 3. NOTE4C 只通过 HTTPS 读取 manifest 和新画面，SHA-256 校验成功后才覆盖旧画面。
 
@@ -51,7 +51,7 @@ sequenceDiagram
     participant O as OpenAI
     participant S as 公网 HTTPS 服务
     participant N as NOTE4C 4C
-    M->>O: codex-auth list --api
+    M->>O: 顺序刷新 3 个付费账号
     M->>M: 过滤付费账号并渲染 BWRY 帧
     M->>S: SSH 原子发布帧、预览图、manifest
     N->>S: 每 5 分钟读取 manifest
@@ -67,7 +67,7 @@ sequenceDiagram
 - 其他时间和周末：整点尝试刷新。
 - Mac 休眠时不会主动运行；唤醒后由后续调度或注册表变化继续同步。
 - 手工执行 `codex-auth list --api` 会更新注册表，文件监听任务随后发布新画面。
-- `codex-auth` 任一付费账号没有取得实时成功响应时，relay 退出且不覆盖服务器上的 manifest。
+- 顺序刷新器会为每个付费账号单独重试；任一账号最终没有取得实时成功响应时，relay 退出且不覆盖服务器上的 manifest。
 - NOTE4C 默认每 5 分钟检查一次，但只有 revision 改变才全刷墨水屏。
 
 ## 1. 构建 relay
@@ -114,9 +114,11 @@ cp relay/target/release/codex-note4c-relay \
   "$HOME/Library/Application Support/note4c-codex-quota/"
 cp deploy/macos/note4c-scheduled-sync.sh \
   "$HOME/Library/Application Support/note4c-codex-quota/"
+cp deploy/macos/codex-auth-sequential-refresh.mjs \
+  "$HOME/Library/Application Support/note4c-codex-quota/"
 ```
 
-编辑 `note4c-sync.json`，替换绝对路径、服务器地址和 SSH 私钥。模板中的 `accountLabels` 是可选项：
+编辑 `note4c-sync.json`，替换绝对路径、顺序刷新器路径、服务器地址和 SSH 私钥。顺序刷新器读取 `codex-auth` 管理的本地认证快照，只在 Mac 上逐个刷新 3 个付费账号；全部成功后才原子更新注册表。模板中的 `accountLabels` 是可选项：
 
 ```json
 "accountLabels": {
