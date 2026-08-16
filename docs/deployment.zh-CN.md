@@ -116,6 +116,20 @@ sudo systemctl reload nginx
 
 先手工执行一次 `sync --refresh`。只有 3 个付费账号都得到实时成功响应时才会发布；Free 账号的额度错误不会阻断。
 
+### 安装手动强制刷新命令
+
+自动调度之外，建议保留一个人工兜底命令：
+
+```bash
+install -m 0755 deploy/macos/note4c-quota-refresh \
+  "$(brew --prefix)/bin/note4c-quota-refresh"
+note4c-quota-refresh
+```
+
+它会等待正在执行的同步任务结束，然后顺序刷新全部付费账号、生成新帧并原子上传。命令返回“上传完成”才代表服务器 manifest 已更新；NOTE4C 默认每 5 分钟轮询，发现新 revision 后自动下载并刷新。
+
+如果运行目录不是默认的 `~/Library/Application Support/note4c-codex-quota`，可设置 `NOTE4C_QUOTA_HOME`，或用 `--config`、`--relay` 指定绝对路径。HTTP 401/403 表示对应账号的本地认证快照已失效，需要先用 `codex-auth login` 重新登录该账号；此时旧画面会继续保留。
+
 浏览器验收：
 
 ```bash

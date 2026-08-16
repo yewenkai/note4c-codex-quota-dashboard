@@ -22,3 +22,5 @@ jobs:
       - run: cargo clippy --all-targets --all-features -- -D warnings
       - run: cargo test --all-targets --all-features
       - run: node --check ../deploy/macos/codex-auth-sequential-refresh.mjs
+      - run: sh -n ../deploy/macos/note4c-quota-refresh ../deploy/macos/note4c-scheduled-sync.sh
+      - run: ../deploy/macos/note4c-quota-refresh --help

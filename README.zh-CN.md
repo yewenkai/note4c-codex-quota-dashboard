@@ -131,10 +131,12 @@ cp deploy/macos/codex-auth-sequential-refresh.mjs \
 首次手工同步：
 
 ```bash
-"$HOME/Library/Application Support/note4c-codex-quota/codex-note4c-relay" sync \
-  --config "$HOME/Library/Application Support/note4c-codex-quota/note4c-sync.json" \
-  --refresh
+install -m 0755 deploy/macos/note4c-quota-refresh \
+  "$(brew --prefix)/bin/note4c-quota-refresh"
+note4c-quota-refresh
 ```
+
+这个命令会等待其他同步结束，强制顺序刷新本地额度并立即上传。命令返回成功后，NOTE4C 会在下一次 5 分钟轮询时自动拉取新 revision。
 
 然后按 [docs/deployment.zh-CN.md](docs/deployment.zh-CN.md) 安装两个 LaunchAgent。
 

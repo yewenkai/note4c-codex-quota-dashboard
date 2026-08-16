@@ -8,6 +8,8 @@ A self-hosted, multi-account Codex quota dashboard for the **ZECTRIX NOTE4C four
 
 The NOTE4C never talks to OpenAI. A Mac sequentially refreshes paid accounts from local `codex-auth` snapshots, renders a 400×300 four-color frame, and publishes only the rendered frame plus a small manifest to your HTTPS server. The device polls that server and refreshes the panel only when the frame revision changes.
 
+After setup, run `note4c-quota-refresh` at any time to force a sequential local quota refresh and immediate upload. The device checks for a new revision every five minutes by default.
+
 ## Highlights
 
 - Fixed three-account layout for Business and Plus plans; Free accounts are ignored.

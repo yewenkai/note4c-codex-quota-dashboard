@@ -97,7 +97,10 @@ async function fetchUsage(snapshot, accountIndex) {
         signal: AbortSignal.timeout(15000),
       });
       if (response.status !== 200) {
-        lastError = `HTTP ${response.status}`;
+        lastError =
+          response.status === 401 || response.status === 403
+            ? `HTTP ${response.status}（认证已失效，需要重新登录该账号）`
+            : `HTTP ${response.status}`;
         if (response.status === 401 || response.status === 403) break;
         continue;
       }

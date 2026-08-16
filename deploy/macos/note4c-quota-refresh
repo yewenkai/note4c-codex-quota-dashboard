@@ -1,0 +1,77 @@
+#!/bin/sh
+set -eu
+
+usage() {
+    cat <<'EOF'
+用法：note4c-quota-refresh [--config PATH] [--relay PATH]
+
+从本机 codex-auth 认证快照顺序刷新付费账号额度，生成 NOTE4C 四色帧，
+并按配置立即上传到服务器。设备会在下一次轮询时自动拉取新 revision。
+
+环境变量：
+  NOTE4C_QUOTA_HOME   运行目录，默认 ~/Library/Application Support/note4c-codex-quota
+EOF
+}
+
+runtime_dir=${NOTE4C_QUOTA_HOME:-"$HOME/Library/Application Support/note4c-codex-quota"}
+legacy_runtime_dir="$HOME/Library/Application Support/codex-note4c-relay"
+if [ -z "${NOTE4C_QUOTA_HOME:-}" ] && [ ! -d "$runtime_dir" ] && [ -d "$legacy_runtime_dir" ]; then
+    runtime_dir=$legacy_runtime_dir
+fi
+config_path="$runtime_dir/note4c-sync.json"
+relay_path="$runtime_dir/codex-note4c-relay"
+
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --config)
+            [ "$#" -ge 2 ] || { echo "--config 缺少路径" >&2; exit 2; }
+            config_path=$2
+            shift 2
+            ;;
+        --relay)
+            [ "$#" -ge 2 ] || { echo "--relay 缺少路径" >&2; exit 2; }
+            relay_path=$2
+            shift 2
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        *)
+            echo "未知参数：$1" >&2
+            usage >&2
+            exit 2
+            ;;
+    esac
+done
+
+[ -f "$config_path" ] || { echo "找不到配置：$config_path" >&2; exit 2; }
+[ -x "$relay_path" ] || { echo "找不到 relay：$relay_path" >&2; exit 2; }
+
+# launchd and terminal shells may use different PATH values. The sequential
+# refresher requires Node.js 22.21+, so resolve it explicitly here as well.
+node_bin=""
+for node_candidate in \
+    /opt/homebrew/bin/node \
+    /usr/local/bin/node \
+    "$HOME"/.nvm/versions/node/*/bin/node
+do
+    if [ -x "$node_candidate" ] &&
+        "$node_candidate" -e 'const [a,b]=process.versions.node.split(".").map(Number); process.exit(a>22||(a===22&&b>=21)?0:1)' \
+            >/dev/null 2>&1
+    then
+        node_bin=$node_candidate
+        break
+    fi
+done
+if [ -z "$node_bin" ]; then
+    echo "找不到 Node.js 22.21+；无法刷新 codex-auth 额度" >&2
+    exit 127
+fi
+
+PATH=$(dirname -- "$node_bin"):/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
+export PATH
+
+echo "开始刷新付费账号额度并上传……"
+"$relay_path" sync --config "$config_path" --refresh --wait
+echo "上传完成；NOTE4C 将在下一轮询周期自动拉取。"

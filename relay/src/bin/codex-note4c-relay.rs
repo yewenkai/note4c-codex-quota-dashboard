@@ -45,21 +45,26 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         "sync" => {
             let config_path = value_after(&mut args, "--config")?;
             let mut refresh = false;
+            let mut wait_for_lock = false;
             for argument in args {
-                if argument == "--refresh" {
-                    refresh = true;
-                } else {
-                    return Err(format!("未知参数：{argument}").into());
+                match argument.as_str() {
+                    "--refresh" => refresh = true,
+                    "--wait" => wait_for_lock = true,
+                    _ => return Err(format!("未知参数：{argument}").into()),
                 }
             }
-            sync(&config_path, refresh)?;
+            sync(&config_path, refresh, wait_for_lock)?;
         }
         _ => return Err(usage().into()),
     }
     Ok(())
 }
 
-fn sync(config_path: &Path, refresh: bool) -> Result<(), Box<dyn std::error::Error>> {
+fn sync(
+    config_path: &Path,
+    refresh: bool,
+    wait_for_lock: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
     let config: SyncConfig = serde_json::from_slice(&fs::read(config_path)?)?;
     fs::create_dir_all(&config.state_directory)?;
     let lock = config.state_directory.join("sync.lock");
@@ -71,11 +76,15 @@ fn sync(config_path: &Path, refresh: bool) -> Result<(), Box<dyn std::error::Err
     let lock_result = unsafe {
         libc::flock(
             std::os::fd::AsRawFd::as_raw_fd(&lock_file),
-            libc::LOCK_EX | libc::LOCK_NB,
+            libc::LOCK_EX | if wait_for_lock { 0 } else { libc::LOCK_NB },
         )
     };
     if lock_result != 0 {
-        return Err("另一个同步进程正在运行，本次跳过".into());
+        if wait_for_lock {
+            return Err(std::io::Error::last_os_error().into());
+        }
+        println!("另一个同步进程正在运行，本次跳过");
+        return Ok(());
     }
 
     let accounts_before_refresh =
@@ -132,6 +141,7 @@ fn refresh_paid_accounts(
         ));
     }
     let mut successful = HashSet::new();
+    let mut last_failure = None;
     for attempt in 0..attempts {
         let output = Command::new(codex_auth_bin)
             .arg("list")
@@ -144,6 +154,9 @@ fn refresh_paid_accounts(
             trace.push('\n');
             trace.push_str(&String::from_utf8_lossy(&output.stdout));
             successful.extend(successful_paid_refreshes(&trace));
+        } else {
+            last_failure =
+                last_nonempty_line(&output.stderr).or_else(|| last_nonempty_line(&output.stdout));
         }
         if expected_emails
             .iter()
@@ -161,10 +174,24 @@ fn refresh_paid_accounts(
         .filter(|email| !successful.contains(*email))
         .cloned()
         .collect::<Vec<_>>();
-    Err(QuotaRelayError::InvalidRegistry(format!(
-        "以下付费账号连续 {attempts} 次未取得成功的实时额度响应：{}；拒绝覆盖现有画面",
-        missing.join(", ")
-    )))
+    let message = if let Some(detail) = last_failure {
+        format!("刷新器报告：{detail}；拒绝覆盖现有画面")
+    } else {
+        format!(
+            "以下付费账号连续 {attempts} 次未取得成功的实时额度响应：{}；拒绝覆盖现有画面",
+            missing.join(", ")
+        )
+    };
+    Err(QuotaRelayError::InvalidRegistry(message))
+}
+
+fn last_nonempty_line(bytes: &[u8]) -> Option<String> {
+    String::from_utf8_lossy(bytes)
+        .lines()
+        .rev()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .map(str::to_owned)
 }
 
 fn successful_paid_refreshes(trace: &str) -> HashSet<String> {
@@ -248,7 +275,7 @@ fn now() -> Result<i64, std::time::SystemTimeError> {
 }
 
 fn usage() -> &'static str {
-    "用法：\n  codex-note4c-relay preview --registry PATH --output-bin PATH --output-png PATH [--generated-at UNIX_SECONDS]\n  codex-note4c-relay sync --config PATH [--refresh]"
+    "用法：\n  codex-note4c-relay preview --registry PATH --output-bin PATH --output-png PATH [--generated-at UNIX_SECONDS]\n  codex-note4c-relay sync --config PATH [--refresh] [--wait]"
 }
 
 #[cfg(test)]
@@ -271,5 +298,11 @@ mod tests {
         let error =
             validate_paid_refresh(trace, ["biz@example.com", "plus@example.com"]).unwrap_err();
         assert!(error.to_string().contains("plus@example.com"));
+    }
+
+    #[test]
+    fn last_nonempty_line_uses_the_final_diagnostic() {
+        let trace = b"first\n\nfinal error\n";
+        assert_eq!(last_nonempty_line(trace).as_deref(), Some("final error"));
     }
 }
