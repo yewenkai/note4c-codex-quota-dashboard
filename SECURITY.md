@@ -9,7 +9,7 @@
 
 ## Data published to the server
 
-The server stores a rendered PNG, a 30,000-byte BWRY frame, and a manifest. The rendered images contain the displayed account label, plan, quota, active-account marker, and update time. Configure `accountLabels` in the local sync configuration if real email addresses must not leave the Mac.
+The server stores a rendered PNG, a 30,000-byte BWRY frame, and a manifest. The rendered images contain the displayed account label, plan, five-hour and weekly quota status, active-account marker, and update time. Configure `accountLabels` in the local sync configuration if real email addresses must not leave the Mac.
 
 The manifest contains only revision, timestamp, frame path, SHA-256, size, format, width, and height.
 

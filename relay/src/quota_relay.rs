@@ -14,8 +14,7 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 use u8g2_fonts::FontRenderer;
 use u8g2_fonts::fonts::{
-    u8g2_font_logisoso30_tn, u8g2_font_wqy13_t_gb2312, u8g2_font_wqy14_t_gb2312,
-    u8g2_font_wqy16_t_gb2312,
+    u8g2_font_wqy13_t_gb2312, u8g2_font_wqy14_t_gb2312, u8g2_font_wqy16_t_gb2312,
 };
 use u8g2_fonts::types::{FontColor, HorizontalAlignment, VerticalPosition};
 
@@ -155,6 +154,7 @@ pub struct CodexAuthAccount {
 pub struct CodexAuthUsage {
     pub plan_type: String,
     pub primary: Option<CodexAuthWindow>,
+    pub secondary: Option<CodexAuthWindow>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -169,9 +169,10 @@ pub struct PaidAccountQuota {
     pub email: String,
     pub plan: String,
     pub active: bool,
-    pub remaining_percent: u8,
-    pub window_minutes: i64,
-    pub resets_at: i64,
+    pub five_hour_remaining_percent: u8,
+    pub five_hour_resets_at: i64,
+    pub weekly_remaining_percent: u8,
+    pub weekly_resets_at: i64,
     pub observed_at: i64,
 }
 
@@ -207,18 +208,15 @@ pub fn read_paid_accounts(
                 account.email
             )));
         }
-        let primary = usage.primary.ok_or_else(|| {
-            QuotaRelayError::InvalidRegistry(format!("{} 缺少 primary 额度窗口", account.email))
+        let windows = [usage.primary.as_ref(), usage.secondary.as_ref()];
+        let five_hour = find_window(&windows, 300).ok_or_else(|| {
+            QuotaRelayError::InvalidRegistry(format!("{} 缺少 5 小时额度窗口", account.email))
         })?;
-        if !(0..=100).contains(&primary.used_percent)
-            || primary.window_minutes <= 0
-            || primary.resets_at <= 0
-        {
-            return Err(QuotaRelayError::InvalidRegistry(format!(
-                "{} 的额度窗口无效",
-                account.email
-            )));
-        }
+        let weekly = find_window(&windows, 10_080).ok_or_else(|| {
+            QuotaRelayError::InvalidRegistry(format!("{} 缺少周额度窗口", account.email))
+        })?;
+        validate_window(&account.email, "5 小时", five_hour)?;
+        validate_window(&account.email, "周", weekly)?;
         let observed_at = account.last_usage_at.ok_or_else(|| {
             QuotaRelayError::InvalidRegistry(format!("{} 缺少 last_usage_at", account.email))
         })?;
@@ -226,9 +224,10 @@ pub fn read_paid_accounts(
             email: account.email,
             plan: normalized_plan.into(),
             active: active_account_key.as_deref() == Some(account.account_key.as_str()),
-            remaining_percent: (100 - primary.used_percent) as u8,
-            window_minutes: primary.window_minutes,
-            resets_at: primary.resets_at,
+            five_hour_remaining_percent: (100 - five_hour.used_percent) as u8,
+            five_hour_resets_at: five_hour.resets_at,
+            weekly_remaining_percent: (100 - weekly.used_percent) as u8,
+            weekly_resets_at: weekly.resets_at,
             observed_at,
         });
     }
@@ -242,6 +241,30 @@ pub fn read_paid_accounts(
         )));
     }
     Ok(paid)
+}
+
+fn find_window<'a>(
+    windows: &[Option<&'a CodexAuthWindow>],
+    window_minutes: i64,
+) -> Option<&'a CodexAuthWindow> {
+    windows
+        .iter()
+        .flatten()
+        .find(|window| window.window_minutes == window_minutes)
+        .copied()
+}
+
+fn validate_window(
+    email: &str,
+    label: &str,
+    window: &CodexAuthWindow,
+) -> Result<(), QuotaRelayError> {
+    if !(0..=100).contains(&window.used_percent) || window.resets_at <= 0 {
+        return Err(QuotaRelayError::InvalidRegistry(format!(
+            "{email} 的{label}额度窗口无效"
+        )));
+    }
+    Ok(())
 }
 
 pub fn validate_freshness(
@@ -293,7 +316,6 @@ pub fn render_paid_accounts(
     let header_font = FontRenderer::new::<u8g2_font_wqy16_t_gb2312>();
     let body_font = FontRenderer::new::<u8g2_font_wqy14_t_gb2312>();
     let small_font = FontRenderer::new::<u8g2_font_wqy13_t_gb2312>();
-    let number_font = FontRenderer::new::<u8g2_font_logisoso30_tn>();
 
     frame.fill(0, 0, DISPLAY_WIDTH, 46, BwryColor::Black);
     draw_text(
@@ -317,7 +339,6 @@ pub fn render_paid_accounts(
 
     for (index, account) in accounts.iter().enumerate() {
         let y = 50 + index as i32 * 73;
-        let color = quota_color(account.remaining_percent);
         let plan_color = if account.plan == "Business" {
             BwryColor::Red
         } else {
@@ -342,72 +363,95 @@ pub fn render_paid_accounts(
         draw_text(
             &mut frame,
             &body_font,
-            &fit_text(&body_font, &account.email, 218),
+            &fit_text(&body_font, &account.email, 260),
             80,
             y + 17,
             BwryColor::Black,
         )?;
-        draw_text_aligned(
-            &mut frame,
-            &number_font,
-            &account.remaining_percent.to_string(),
-            365,
-            y + 35,
-            HorizontalAlignment::Right,
-            color,
-        )?;
-        draw_text(&mut frame, &body_font, "%", 369, y + 35, BwryColor::Black)?;
-
-        let reset = format_reset(account.resets_at, generated_at);
-        let reset_x = if account.active {
-            frame.fill(80, y + 25, 34, 15, BwryColor::Yellow);
+        if account.active {
+            frame.fill(350, y + 2, 36, 20, BwryColor::Yellow);
             draw_text(
                 &mut frame,
                 &small_font,
                 "当前",
-                84,
-                y + 38,
+                354,
+                y + 17,
                 BwryColor::Black,
             )?;
-            120
-        } else {
-            80
-        };
-        draw_text(
-            &mut frame,
-            &small_font,
-            &format!("{}额度 / {reset}", window_label(account.window_minutes)),
-            reset_x,
-            y + 39,
-            BwryColor::Black,
-        )?;
-        frame.fill(80, y + 48, 250, 9, BwryColor::Black);
-        let inner = u32::from(account.remaining_percent) * 246 / 100;
-        if inner > 0 {
-            frame.fill(82, y + 50, inner, 5, color);
         }
+
+        frame.fill(199, y + 27, 1, 31, BwryColor::Black);
+        draw_quota_half(
+            &mut frame,
+            (&body_font, &small_font),
+            14,
+            y,
+            (
+                account.five_hour_remaining_percent,
+                account.five_hour_resets_at,
+            ),
+            generated_at,
+        )?;
+        draw_quota_half(
+            &mut frame,
+            (&body_font, &small_font),
+            212,
+            y,
+            (account.weekly_remaining_percent, account.weekly_resets_at),
+            generated_at,
+        )?;
     }
 
     frame.fill(0, 269, DISPLAY_WIDTH, 31, BwryColor::Black);
-    frame.fill(48, 280, 8, 8, BwryColor::Yellow);
-    frame.fill(224, 280, 8, 8, BwryColor::Red);
     draw_text(
         &mut frame,
         &small_font,
-        "可用 >=20%",
-        62,
+        "左5小时  右周",
+        14,
         289,
         BwryColor::White,
     )?;
-    draw_text(
-        &mut frame,
-        &small_font,
-        "紧张 <20%",
-        238,
-        289,
-        BwryColor::White,
-    )?;
+    frame.fill(154, 280, 8, 8, BwryColor::Yellow);
+    frame.fill(274, 280, 8, 8, BwryColor::Red);
+    draw_text(&mut frame, &small_font, ">=20%", 168, 289, BwryColor::White)?;
+    draw_text(&mut frame, &small_font, "<20%", 288, 289, BwryColor::White)?;
     Ok(frame)
+}
+
+fn draw_quota_half(
+    frame: &mut BwryFrame,
+    fonts: (&FontRenderer, &FontRenderer),
+    x: i32,
+    y: i32,
+    quota: (u8, i64),
+    generated_at: i64,
+) -> Result<(), QuotaRelayError> {
+    let (body_font, small_font) = fonts;
+    let (remaining_percent, resets_at) = quota;
+    let color = quota_color(remaining_percent);
+    draw_text(
+        frame,
+        body_font,
+        &format!("{remaining_percent}%"),
+        x,
+        y + 40,
+        color,
+    )?;
+    draw_text(
+        frame,
+        small_font,
+        &format_reset(resets_at, generated_at),
+        x + 43,
+        y + 40,
+        BwryColor::Black,
+    )?;
+
+    frame.fill(x, y + 48, 174, 9, BwryColor::Black);
+    let inner = u32::from(remaining_percent) * 170 / 100;
+    if inner > 0 {
+        frame.fill(x + 2, y + 50, inner, 5, color);
+    }
+    Ok(())
 }
 
 fn quota_color(remaining: u8) -> BwryColor {
@@ -486,21 +530,23 @@ fn format_sync_time(timestamp: i64) -> String {
 fn format_reset(resets_at: i64, now: i64) -> String {
     let minutes = (resets_at.saturating_sub(now).max(0) + 59) / 60;
     if minutes >= 24 * 60 {
-        format!("{}天{}小时后重置", minutes / 1440, minutes % 1440 / 60)
+        let days = minutes / 1440;
+        let hours = minutes % 1440 / 60;
+        if hours == 0 {
+            format!("{days}天后重置")
+        } else {
+            format!("{days}天{hours}小时后重置")
+        }
     } else if minutes >= 60 {
-        format!("{}小时{}分后重置", minutes / 60, minutes % 60)
+        let hours = minutes / 60;
+        let remaining_minutes = minutes % 60;
+        if remaining_minutes == 0 {
+            format!("{hours}小时后重置")
+        } else {
+            format!("{hours}小时{remaining_minutes}分后重置")
+        }
     } else {
         format!("{}分后重置", minutes)
-    }
-}
-
-fn window_label(minutes: i64) -> String {
-    if minutes % 1440 == 0 {
-        format!("{}天", minutes / 1440)
-    } else if minutes % 60 == 0 {
-        format!("{}小时", minutes / 60)
-    } else {
-        format!("{}分钟", minutes)
     }
 }
 
@@ -738,27 +784,30 @@ mod tests {
                 email: "one@example.com".into(),
                 plan: "Business".into(),
                 active: true,
-                remaining_percent: 100,
-                window_minutes: 10080,
-                resets_at: 1_800_000_000,
+                five_hour_remaining_percent: 100,
+                five_hour_resets_at: 1_790_010_000,
+                weekly_remaining_percent: 82,
+                weekly_resets_at: 1_790_500_000,
                 observed_at: 1_790_000_000,
             },
             PaidAccountQuota {
                 email: "two@example.com".into(),
                 plan: "Business".into(),
                 active: false,
-                remaining_percent: 49,
-                window_minutes: 10080,
-                resets_at: 1_800_000_000,
+                five_hour_remaining_percent: 49,
+                five_hour_resets_at: 1_790_010_000,
+                weekly_remaining_percent: 20,
+                weekly_resets_at: 1_790_500_000,
                 observed_at: 1_790_000_000,
             },
             PaidAccountQuota {
                 email: "three@example.com".into(),
                 plan: "Plus".into(),
                 active: false,
-                remaining_percent: 10,
-                window_minutes: 10080,
-                resets_at: 1_800_000_000,
+                five_hour_remaining_percent: 10,
+                five_hour_resets_at: 1_790_010_000,
+                weekly_remaining_percent: 19,
+                weekly_resets_at: 1_790_500_000,
                 observed_at: 1_790_000_000,
             },
         ]
@@ -800,18 +849,41 @@ mod tests {
             registry,
             r#"{{"schema_version":3,"active_account_key":"biz-key","accounts":[
               {{"account_key":"free-key","email":"free@example.com","plan":"free","last_usage":null,"last_usage_at":null}},
-              {{"account_key":"biz-key","email":"biz@example.com","plan":"team","last_usage":{{"plan_type":"team","primary":{{"used_percent":23,"window_minutes":10080,"resets_at":1800000000}}}},"last_usage_at":1790000000}},
-              {{"account_key":"plus-key","email":"plus@example.com","plan":"plus","last_usage":{{"plan_type":"plus","primary":{{"used_percent":18,"window_minutes":10080,"resets_at":1800000000}}}},"last_usage_at":1790000000}}
+              {{"account_key":"biz-key","email":"biz@example.com","plan":"team","last_usage":{{"plan_type":"team","primary":{{"used_percent":23,"window_minutes":300,"resets_at":1790010000}},"secondary":{{"used_percent":41,"window_minutes":10080,"resets_at":1790500000}}}},"last_usage_at":1790000000}},
+              {{"account_key":"plus-key","email":"plus@example.com","plan":"plus","last_usage":{{"plan_type":"plus","primary":{{"used_percent":18,"window_minutes":300,"resets_at":1790010000}},"secondary":{{"used_percent":7,"window_minutes":10080,"resets_at":1790500000}}}},"last_usage_at":1790000000}}
             ]}}"#
         )
         .unwrap();
         let paid = read_paid_accounts(registry.path(), 2).unwrap();
         assert_eq!(paid[0].plan, "Business");
-        assert_eq!(paid[0].remaining_percent, 77);
+        assert_eq!(paid[0].five_hour_remaining_percent, 77);
+        assert_eq!(paid[0].weekly_remaining_percent, 59);
         assert!(paid[0].active);
         assert_eq!(paid[1].plan, "Plus");
-        assert_eq!(paid[1].remaining_percent, 82);
+        assert_eq!(paid[1].five_hour_remaining_percent, 82);
+        assert_eq!(paid[1].weekly_remaining_percent, 93);
         assert!(!paid[1].active);
+    }
+
+    #[test]
+    fn registry_requires_both_five_hour_and_weekly_windows() {
+        let mut registry = tempfile::NamedTempFile::new().unwrap();
+        write!(
+            registry,
+            r#"{{"schema_version":3,"active_account_key":"plus-key","accounts":[
+              {{"account_key":"plus-key","email":"plus@example.com","plan":"plus","last_usage":{{"plan_type":"plus","primary":{{"used_percent":18,"window_minutes":300,"resets_at":1790010000}},"secondary":null}},"last_usage_at":1790000000}}
+            ]}}"#
+        )
+        .unwrap();
+        let error = read_paid_accounts(registry.path(), 1).unwrap_err();
+        assert!(error.to_string().contains("缺少周额度窗口"));
+    }
+
+    #[test]
+    fn reset_countdown_omits_zero_subunits() {
+        assert_eq!(format_reset(7_200, 0), "2小时后重置");
+        assert_eq!(format_reset(432_000, 0), "5天后重置");
+        assert_eq!(format_reset(439_200, 0), "5天2小时后重置");
     }
 
     #[test]

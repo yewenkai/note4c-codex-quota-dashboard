@@ -10,6 +10,11 @@
         "plan_type": "team",
         "primary": {
           "used_percent": 23,
+          "window_minutes": 300,
+          "resets_at": 1786446000
+        },
+        "secondary": {
+          "used_percent": 42,
           "window_minutes": 10080,
           "resets_at": 1786870800
         }
@@ -24,6 +29,11 @@
         "plan_type": "business",
         "primary": {
           "used_percent": 51,
+          "window_minutes": 300,
+          "resets_at": 1786442400
+        },
+        "secondary": {
+          "used_percent": 67,
           "window_minutes": 10080,
           "resets_at": 1786870800
         }
@@ -38,6 +48,11 @@
         "plan_type": "plus",
         "primary": {
           "used_percent": 90,
+          "window_minutes": 300,
+          "resets_at": 1786438800
+        },
+        "secondary": {
+          "used_percent": 12,
           "window_minutes": 10080,
           "resets_at": 1786870800
         }

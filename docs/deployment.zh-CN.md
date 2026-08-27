@@ -114,7 +114,7 @@ sudo systemctl reload nginx
 - `publisher.host`：域名或公网 IP，不写 `https://`；
 - `publisher.identityFile`：专用 SSH 私钥的绝对路径。
 
-先手工执行一次 `sync --refresh`。只有 3 个付费账号都得到实时成功响应时才会发布；Free 账号的额度错误不会阻断。
+先手工执行一次 `sync --refresh`。只有 3 个付费账号都得到实时成功响应，并且每个账号都同时包含 300 分钟与 10080 分钟额度窗口时才会发布；Free 账号的额度错误不会阻断。
 
 ### 安装手动强制刷新命令
 

@@ -13,6 +13,7 @@ After setup, run `note4c-quota-refresh` at any time to force a sequential local 
 ## Highlights
 
 - Fixed three-account layout for Business and Plus plans; Free accounts are ignored.
+- Shows both five-hour and weekly remaining percentages, reset countdowns, and progress bars for every paid account.
 - Marks the account selected by `codex-auth` as the current account.
 - Yellow quota at 20% or above, red below 20%.
 - Workday quarter-hour scheduling and registry-change updates on macOS.

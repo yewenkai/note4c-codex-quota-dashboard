@@ -1,6 +1,6 @@
 # NOTE4C Codex 多账号额度看板
 
-这是一个面向 **ZECTRIX NOTE4C 4C 四色墨水屏**的自托管 Codex 额度看板。它固定显示 3 个 Business / Plus 账号，忽略 Free 账号，并标记 `codex-auth` 当前选中的账号。
+这是一个面向 **ZECTRIX NOTE4C 4C 四色墨水屏**的自托管 Codex 额度看板。它固定显示 3 个 Business / Plus 账号的 5 小时与周额度，忽略 Free 账号，并标记 `codex-auth` 当前选中的账号。
 
 ![使用虚构账号生成的示例画面](docs/images/dashboard-sample.png)
 
@@ -68,6 +68,8 @@ sequenceDiagram
 - Mac 休眠时不会主动运行；唤醒后由后续调度或注册表变化继续同步。
 - 手工执行 `codex-auth list --api` 会更新注册表，文件监听任务随后发布新画面。
 - 顺序刷新器会为每个付费账号单独重试；任一账号最终没有取得实时成功响应时，relay 退出且不覆盖服务器上的 manifest。
+- 每个账号左半段显示 5 小时剩余百分比、重置倒计时和进度条，右半段显示周剩余百分比、重置倒计时和进度条。
+- 5 小时或周额度任一窗口缺失、过期或字段无效时都拒绝发布，继续保留上一张成功画面。
 - NOTE4C 默认每 5 分钟检查一次，但只有 revision 改变才全刷墨水屏。
 
 ## 1. 构建 relay
