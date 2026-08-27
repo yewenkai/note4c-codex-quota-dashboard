@@ -428,14 +428,15 @@ fn draw_quota_half(
 ) -> Result<(), QuotaRelayError> {
     let (body_font, small_font) = fonts;
     let (remaining_percent, resets_at) = quota;
-    let color = quota_color(remaining_percent);
+    let bar_color = quota_color(remaining_percent);
+    let text_color = quota_text_color(remaining_percent);
     draw_text(
         frame,
         body_font,
         &format!("{remaining_percent}%"),
         x,
         y + 40,
-        color,
+        text_color,
     )?;
     draw_text(
         frame,
@@ -449,7 +450,7 @@ fn draw_quota_half(
     frame.fill(x, y + 48, 174, 9, BwryColor::Black);
     let inner = u32::from(remaining_percent) * 170 / 100;
     if inner > 0 {
-        frame.fill(x + 2, y + 50, inner, 5, color);
+        frame.fill(x + 2, y + 50, inner, 5, bar_color);
     }
     Ok(())
 }
@@ -458,6 +459,14 @@ fn quota_color(remaining: u8) -> BwryColor {
     match remaining {
         20..=100 => BwryColor::Yellow,
         _ => BwryColor::Red,
+    }
+}
+
+fn quota_text_color(remaining: u8) -> BwryColor {
+    if remaining < 20 {
+        BwryColor::Red
+    } else {
+        BwryColor::Black
     }
 }
 
@@ -822,6 +831,9 @@ mod tests {
         assert_eq!(quota_color(49), BwryColor::Yellow);
         assert_eq!(quota_color(20), BwryColor::Yellow);
         assert_eq!(quota_color(19), BwryColor::Red);
+        assert_eq!(quota_text_color(100), BwryColor::Black);
+        assert_eq!(quota_text_color(20), BwryColor::Black);
+        assert_eq!(quota_text_color(19), BwryColor::Red);
     }
 
     #[test]
