@@ -72,7 +72,7 @@
       "last_usage": {
         "plan_type": "free",
         "primary": {
-          "used_percent": 0,
+          "used_percent": 100,
           "window_minutes": 43200,
           "resets_at": 1789023600
         },

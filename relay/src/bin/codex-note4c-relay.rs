@@ -35,7 +35,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             ensure_no_args(args)?;
             let registry = CodexAuthRegistry::read(registry)?;
             let accounts = registry.cached_quotas(3)?;
-            let frame = render_paid_accounts(&accounts, generated_at, registry.active_is_free())?;
+            let frame =
+                render_paid_accounts(&accounts, generated_at, registry.active_free_quota())?;
             fs::write(&output_bin, frame.packed_bytes())?;
             fs::write(&output_png, frame.png_bytes()?)?;
             println!(
@@ -120,7 +121,7 @@ fn sync(
 
     apply_account_labels(&mut accounts, &config.account_labels)?;
     let generated_at = now()?;
-    let frame = render_paid_accounts(&accounts, generated_at, registry.active_is_free())?;
+    let frame = render_paid_accounts(&accounts, generated_at, registry.active_free_quota())?;
     let manifest = build_manifest(&frame, generated_at);
     write_local_state(&config.state_directory, &frame, &manifest)?;
     if let Some(publisher) = &config.publisher {
@@ -449,7 +450,10 @@ mod tests {
             observed_at,
         )
         .unwrap();
-        assert!(registry.active_is_free());
+        assert_eq!(
+            registry.active_free_quota(),
+            Some(note4c_codex_quota_dashboard::quota_relay::ActiveFreeQuota::Unknown)
+        );
         assert!(quotas.iter().all(|quota| !quota.active));
         assert_eq!(quotas[0].observed_at, observed_at);
         assert_eq!(quotas[0].five_hour_remaining_percent, 76);

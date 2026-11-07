@@ -188,6 +188,12 @@ pub struct PaidAccountQuota {
     pub reset_credits: Option<i64>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ActiveFreeQuota {
+    Unknown,
+    Window { remaining: u8, resets_at: i64 },
+}
+
 impl CodexAuthRegistry {
     pub fn read(path: impl AsRef<Path>) -> Result<Self, QuotaRelayError> {
         let registry: Self = serde_json::from_slice(&fs::read(path)?)?;
@@ -254,10 +260,32 @@ impl CodexAuthRegistry {
         self.active_account_key.as_deref() == Some(account.account_key.as_str())
     }
 
-    pub fn active_is_free(&self) -> bool {
-        self.accounts
+    pub fn active_free_quota(&self) -> Option<ActiveFreeQuota> {
+        let account = self
+            .accounts
             .iter()
-            .any(|account| self.is_active(account) && account.plan() == Some("free"))
+            .find(|account| self.is_active(account) && account.plan() == Some("free"))?;
+        let window = account
+            .last_usage
+            .as_ref()
+            .filter(|usage| usage.plan_type.as_deref() == Some("free"))
+            .and_then(|usage| usage.primary.as_ref())
+            .and_then(CodexAuthWindow::remaining_and_reset);
+        Some(match window {
+            Some((remaining, resets_at)) => ActiveFreeQuota::Window {
+                remaining,
+                resets_at,
+            },
+            None => ActiveFreeQuota::Unknown,
+        })
+    }
+}
+
+impl CodexAuthWindow {
+    fn remaining_and_reset(&self) -> Option<(u8, i64)> {
+        let resets_at = self.resets_at?;
+        (resets_at > 0 && (0.0..=100.0).contains(&self.used_percent))
+            .then_some(((100.0 - self.used_percent) as u8, resets_at))
     }
 }
 
@@ -353,14 +381,9 @@ fn quota_window(
     label: &str,
     window: &CodexAuthWindow,
 ) -> Result<(u8, i64), QuotaRelayError> {
-    if let Some(resets_at) = window.resets_at {
-        if resets_at > 0 && (0.0..=100.0).contains(&window.used_percent) {
-            return Ok(((100.0 - window.used_percent) as u8, resets_at));
-        }
-    }
-    Err(QuotaRelayError::InvalidRegistry(format!(
-        "{email} 的{label}额度窗口无效"
-    )))
+    window
+        .remaining_and_reset()
+        .ok_or_else(|| QuotaRelayError::InvalidRegistry(format!("{email} 的{label}额度窗口无效")))
 }
 
 pub fn validate_freshness(
@@ -405,7 +428,7 @@ pub fn apply_account_labels(
 pub fn render_paid_accounts(
     accounts: &[PaidAccountQuota],
     generated_at: i64,
-    active_is_free: bool,
+    active_free_quota: Option<ActiveFreeQuota>,
 ) -> Result<BwryFrame, QuotaRelayError> {
     if accounts.len() != 3 {
         return Err(QuotaRelayError::Render(
@@ -436,17 +459,20 @@ pub fn render_paid_accounts(
         HorizontalAlignment::Right,
         BwryColor::White,
     )?;
-    if active_is_free {
-        frame.fill(159, 12, 82, 23, BwryColor::Yellow);
-        draw_text_aligned(
-            &mut frame,
-            &small_font,
-            "当前 Free",
-            200,
-            29,
-            HorizontalAlignment::Center,
-            BwryColor::Black,
-        )?;
+    if let Some(quota) = active_free_quota {
+        let (title, detail) = format_active_free_quota(quota, generated_at);
+        frame.fill(125, 5, 150, 36, BwryColor::Yellow);
+        for (line, y) in [(&title, 20), (&detail, 35)] {
+            draw_text_aligned(
+                &mut frame,
+                &small_font,
+                line,
+                200,
+                y,
+                HorizontalAlignment::Center,
+                BwryColor::Black,
+            )?;
+        }
     }
 
     for (index, account) in accounts.iter().enumerate() {
@@ -665,6 +691,32 @@ fn fit_text(font: &FontRenderer, content: &str, max_width: i32) -> String {
 fn format_sync_time(timestamp: i64) -> String {
     let time = local_tm(timestamp);
     format!("更新 {:02}:{:02}", time.tm_hour, time.tm_min)
+}
+
+fn format_active_free_quota(quota: ActiveFreeQuota, now: i64) -> (String, String) {
+    let ActiveFreeQuota::Window {
+        remaining,
+        resets_at,
+    } = quota
+    else {
+        return ("当前 Free".into(), "重置时间未知".into());
+    };
+    if resets_at <= now {
+        return ("当前 Free".into(), "重置待确认".into());
+    }
+    let detail = if remaining == 100 {
+        "额度可用".into()
+    } else {
+        let time = local_tm(resets_at);
+        format!(
+            "{:02}月{:02}日 {:02}:{:02} 重置",
+            time.tm_mon + 1,
+            time.tm_mday,
+            time.tm_hour,
+            time.tm_min
+        )
+    };
+    (format!("当前 Free {remaining}%"), detail)
 }
 
 fn format_reset(resets_at: i64, now: i64) -> String {
@@ -966,7 +1018,7 @@ mod tests {
 
     #[test]
     fn frame_is_exact_note4c_bwry_size_and_palette_order() {
-        let frame = render_paid_accounts(&accounts(), 1_790_000_000, false).unwrap();
+        let frame = render_paid_accounts(&accounts(), 1_790_000_000, None).unwrap();
         assert_eq!(frame.packed_bytes().len(), 30_000);
         assert_eq!(frame.packed_bytes()[0], 0);
         assert_eq!(quota_color(100), BwryColor::Yellow);
@@ -980,7 +1032,7 @@ mod tests {
 
     #[test]
     fn manifest_is_content_addressed() {
-        let frame = render_paid_accounts(&accounts(), 1_790_000_000, false).unwrap();
+        let frame = render_paid_accounts(&accounts(), 1_790_000_000, None).unwrap();
         let manifest = build_manifest(&frame, 1_790_000_000);
         assert_eq!(manifest.revision, frame.sha256());
         assert_eq!(
@@ -1044,6 +1096,36 @@ mod tests {
         assert_eq!(format_reset(7_200, 0), "2小时后重置");
         assert_eq!(format_reset(432_000, 0), "5天后重置");
         assert_eq!(format_reset(439_200, 0), "5天2小时后重置");
+    }
+
+    #[test]
+    fn free_status_separates_available_exhausted_and_expired_windows() {
+        let mut registry: CodexAuthRegistry =
+            serde_json::from_str(include_str!("../tests/fixtures/registry.sample.json")).unwrap();
+        let now = 1_786_431_600;
+        let quota = registry.active_free_quota().unwrap();
+        let (title, detail) = format_active_free_quota(quota, now);
+        assert_eq!(title, "当前 Free 0%");
+        assert!(detail.ends_with(" 重置"));
+        assert_eq!(
+            format_active_free_quota(quota, 1_789_023_600).1,
+            "重置待确认"
+        );
+
+        let free = registry
+            .accounts
+            .iter_mut()
+            .find(|a| a.account_key == "free-a")
+            .unwrap();
+        free.last_usage
+            .as_mut()
+            .unwrap()
+            .primary
+            .as_mut()
+            .unwrap()
+            .used_percent = 0.0;
+        let quota = registry.active_free_quota().unwrap();
+        assert_eq!(format_active_free_quota(quota, now).1, "额度可用");
     }
 
     #[test]

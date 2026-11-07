@@ -15,7 +15,7 @@ After setup, run `note4c-quota-refresh` at any time to force a quota refresh and
 - Fixed three-account layout for Business and Plus plans.
 - Shows both five-hour and weekly remaining percentages, reset countdowns, and progress bars for every paid account.
 - Shows credit balance and available reset credits, with a dash for missing values.
-- Marks the selected paid workspace or shows a Free indicator in the header.
+- Marks the selected paid workspace or shows remaining Free quota and its next reset in the header.
 - Yellow quota at 20% or above, red below 20%.
 - Workday quarter-hour scheduling and registry-change updates on macOS.
 - Failed refreshes never replace the last successful frame.
