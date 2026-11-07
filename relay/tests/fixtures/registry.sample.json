@@ -1,15 +1,17 @@
 {
-  "schema_version": 3,
-  "active_account_key": "business-a",
+  "schema_version": 4,
+  "active_account_key": "free-a",
   "accounts": [
     {
       "account_key": "business-a",
       "email": "business.one@example.com",
-      "plan": "team",
+      "plan": "business",
       "last_usage": {
-        "plan_type": "team",
+        "plan_type": "business",
+        "credits": { "has_credits": false, "unlimited": false, "balance": "0" },
+        "reset_credits": 1,
         "primary": {
-          "used_percent": 23,
+          "used_percent": 23.5,
           "window_minutes": 300,
           "resets_at": 1786446000
         },
@@ -27,6 +29,8 @@
       "plan": "business",
       "last_usage": {
         "plan_type": "business",
+        "credits": { "has_credits": false, "unlimited": false, "balance": null },
+        "reset_credits": 0,
         "primary": {
           "used_percent": 51,
           "window_minutes": 300,
@@ -46,6 +50,8 @@
       "plan": "plus",
       "last_usage": {
         "plan_type": "plus",
+        "credits": { "has_credits": true, "unlimited": false, "balance": "12.5" },
+        "reset_credits": 1,
         "primary": {
           "used_percent": 90,
           "window_minutes": 300,
@@ -61,10 +67,24 @@
     },
     {
       "account_key": "free-a",
-      "email": "free@example.com",
+      "email": "business.one@example.com",
       "plan": "free",
-      "last_usage": null,
-      "last_usage_at": null
+      "last_usage": {
+        "plan_type": "free",
+        "primary": {
+          "used_percent": 0,
+          "window_minutes": 43200,
+          "resets_at": 1789023600
+        },
+        "secondary": null,
+        "reset_credits": 0
+      },
+      "last_usage_at": 1786431600
+    },
+    {
+      "account_key": "free-b",
+      "email": "business.two@example.com",
+      "plan": "free"
     }
   ]
 }

@@ -1,8 +1,8 @@
 {
   "registryPath": "/Users/YOUR_NAME/.codex/accounts/registry.json",
-  "codexAuthBin": "/ABSOLUTE/PATH/codex-auth-sequential-refresh.mjs",
+  "codexAuthBin": "/ABSOLUTE/PATH/codex-auth",
   "expectedPaidAccounts": 3,
-  "refreshAttempts": 1,
+  "refreshAttempts": 3,
   "maximumCacheAgeSeconds": 300,
   "accountLabels": {
     "business.one@example.com": "Business A",

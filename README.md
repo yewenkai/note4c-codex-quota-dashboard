@@ -6,15 +6,16 @@ A self-hosted, multi-account Codex quota dashboard for the **ZECTRIX NOTE4C four
 
 ![Synthetic dashboard example](docs/images/dashboard-sample.png)
 
-The NOTE4C never talks to OpenAI. A Mac sequentially refreshes paid accounts from local `codex-auth` snapshots, renders a 400×300 four-color frame, and publishes only the rendered frame plus a small manifest to your HTTPS server. The device polls that server and refreshes the panel only when the frame revision changes.
+A Mac refreshes usage with `codex-auth`, renders a 400×300 four-color frame, and publishes the rendered frame plus a small manifest to your HTTPS server. The device polls that server and refreshes the panel only when the frame revision changes.
 
-After setup, run `note4c-quota-refresh` at any time to force a sequential local quota refresh and immediate upload. The device checks for a new revision every five minutes by default.
+After setup, run `note4c-quota-refresh` at any time to force a quota refresh and immediate upload. The device checks for a new revision every five minutes by default.
 
 ## Highlights
 
-- Fixed three-account layout for Business and Plus plans; Free accounts are ignored.
+- Fixed three-account layout for Business and Plus plans.
 - Shows both five-hour and weekly remaining percentages, reset countdowns, and progress bars for every paid account.
-- Marks the account selected by `codex-auth` as the current account.
+- Shows credit balance and available reset credits, with a dash for missing values.
+- Marks the selected paid workspace or shows a Free indicator in the header.
 - Yellow quota at 20% or above, red below 20%.
 - Workday quarter-hour scheduling and registry-change updates on macOS.
 - Failed refreshes never replace the last successful frame.
@@ -38,7 +39,8 @@ The server has no Codex or OpenAI token and makes no OpenAI request.
 
 - A ZECTRIX NOTE4C **4C** device: ESP32-S3 N16R8 with the 400×300 SSD2683 BWRY panel.
 - macOS with the Codex CLI accounts already added.
-- The third-party [`codex-auth`](https://github.com/Loongphy/codex-auth) CLI. This project was tested with `codex-auth 0.2.10` and Node.js 24; Node.js 22.21+ is recommended by its API-refresh documentation.
+- The third-party [`codex-auth`](https://github.com/Loongphy/codex-auth) CLI. The relay supports the v0.3.1 JSON API and registry schema 4. Existing schema 3 installations can continue using the bundled sequential refresher.
+- Node.js 22.21+ for the macOS launch scripts.
 - Rust 1.85 or newer to build the relay.
 - A VPS or other public server reachable from the Mac over SSH and from NOTE4C over HTTPS.
 - A publicly trusted TLS certificate. A DNS name is the simplest option. A bare public IP also works only when its certificate is valid for that IP and trusted by the ESP-IDF CA bundle.

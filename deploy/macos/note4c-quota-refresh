@@ -5,7 +5,7 @@ usage() {
     cat <<'EOF'
 用法：note4c-quota-refresh [--config PATH] [--relay PATH]
 
-从本机 codex-auth 认证快照顺序刷新付费账号额度，生成 NOTE4C 四色帧，
+通过本机 codex-auth 刷新付费账号额度，生成 NOTE4C 四色帧，
 并按配置立即上传到服务器。设备会在下一次轮询时自动拉取新 revision。
 
 环境变量：
@@ -48,8 +48,8 @@ done
 [ -f "$config_path" ] || { echo "找不到配置：$config_path" >&2; exit 2; }
 [ -x "$relay_path" ] || { echo "找不到 relay：$relay_path" >&2; exit 2; }
 
-# launchd and terminal shells may use different PATH values. The sequential
-# refresher requires Node.js 22.21+, so resolve it explicitly here as well.
+# Match the scheduled job's Node.js lookup for npm launchers and the legacy
+# refresher.
 node_bin=""
 for node_candidate in \
     /opt/homebrew/bin/node \

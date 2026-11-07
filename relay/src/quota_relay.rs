@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::convert::Infallible;
 use std::fs;
 use std::io::Cursor;
@@ -145,27 +145,37 @@ pub struct CodexAuthRegistry {
 pub struct CodexAuthAccount {
     pub account_key: String,
     pub email: String,
-    pub plan: String,
+    pub plan: Option<String>,
     pub last_usage: Option<CodexAuthUsage>,
     pub last_usage_at: Option<i64>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct CodexAuthUsage {
-    pub plan_type: String,
+    pub plan_type: Option<String>,
     pub primary: Option<CodexAuthWindow>,
     pub secondary: Option<CodexAuthWindow>,
+    pub credits: Option<CodexAuthCredits>,
+    pub reset_credits: Option<i64>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct CodexAuthCredits {
+    pub balance: Option<String>,
+    pub unlimited: bool,
 }
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct CodexAuthWindow {
-    pub used_percent: i64,
-    pub window_minutes: i64,
-    pub resets_at: i64,
+    pub used_percent: f64,
+    pub window_minutes: Option<i64>,
+    pub resets_at: Option<i64>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct PaidAccountQuota {
+    #[serde(skip)]
+    pub account_key: String,
     pub email: String,
     pub plan: String,
     pub active: bool,
@@ -174,73 +184,157 @@ pub struct PaidAccountQuota {
     pub weekly_remaining_percent: u8,
     pub weekly_resets_at: i64,
     pub observed_at: i64,
+    pub credits: Option<String>,
+    pub reset_credits: Option<i64>,
 }
 
-pub fn read_paid_accounts(
-    registry_path: impl AsRef<Path>,
-    expected_count: usize,
-) -> Result<Vec<PaidAccountQuota>, QuotaRelayError> {
-    let bytes = fs::read(registry_path)?;
-    let registry: CodexAuthRegistry = serde_json::from_slice(&bytes)?;
-    if registry.schema_version != 3 {
-        return Err(QuotaRelayError::InvalidRegistry(format!(
-            "不支持 codex-auth registry schema {}（预期 3）",
-            registry.schema_version
-        )));
+impl CodexAuthRegistry {
+    pub fn read(path: impl AsRef<Path>) -> Result<Self, QuotaRelayError> {
+        let registry: Self = serde_json::from_slice(&fs::read(path)?)?;
+        if !matches!(registry.schema_version, 3 | 4) {
+            return Err(QuotaRelayError::InvalidRegistry(format!(
+                "不支持 codex-auth registry schema {}（预期 3 或 4）",
+                registry.schema_version
+            )));
+        }
+        Ok(registry)
     }
 
-    let active_account_key = registry.active_account_key;
-    let mut paid = Vec::new();
-    for account in registry.accounts {
-        let normalized_plan = match account.plan.as_str() {
-            "team" | "business" => "Business",
-            "plus" => "Plus",
-            _ => continue,
-        };
-        let usage = account.last_usage.ok_or_else(|| {
-            QuotaRelayError::InvalidRegistry(format!("{} 缺少 last_usage", account.email))
-        })?;
-        if usage.plan_type != account.plan
-            && !(account.plan == "team" && usage.plan_type == "business")
+    pub fn paid_accounts(
+        &self,
+        expected_count: usize,
+    ) -> Result<Vec<&CodexAuthAccount>, QuotaRelayError> {
+        let mut paid: Vec<_> = self
+            .accounts
+            .iter()
+            .filter(|account| account.is_paid())
+            .collect();
+        if paid.len() != expected_count {
+            return Err(QuotaRelayError::InvalidRegistry(format!(
+                "付费账号数量为 {}，预期 {}；拒绝覆盖现有画面",
+                paid.len(),
+                expected_count
+            )));
+        }
+        let mut keys = HashSet::new();
+        if paid
+            .iter()
+            .any(|account| !keys.insert(&account.account_key))
         {
+            return Err(QuotaRelayError::InvalidRegistry("付费账号标识重复".into()));
+        }
+        paid.sort_by(|left, right| {
+            (&left.email, &left.account_key).cmp(&(&right.email, &right.account_key))
+        });
+        Ok(paid)
+    }
+
+    pub fn cached_quotas(
+        &self,
+        expected_count: usize,
+    ) -> Result<Vec<PaidAccountQuota>, QuotaRelayError> {
+        self.paid_accounts(expected_count)?
+            .into_iter()
+            .map(|account| {
+                let usage = account.last_usage.as_ref().ok_or_else(|| {
+                    QuotaRelayError::InvalidRegistry(format!("{} 缺少 last_usage", account.email))
+                })?;
+                let observed_at = account.last_usage_at.ok_or_else(|| {
+                    QuotaRelayError::InvalidRegistry(format!(
+                        "{} 缺少 last_usage_at",
+                        account.email
+                    ))
+                })?;
+                account.quota(usage, observed_at, self.is_active(account))
+            })
+            .collect()
+    }
+
+    pub fn is_active(&self, account: &CodexAuthAccount) -> bool {
+        self.active_account_key.as_deref() == Some(account.account_key.as_str())
+    }
+
+    pub fn active_is_free(&self) -> bool {
+        self.accounts
+            .iter()
+            .any(|account| self.is_active(account) && account.plan() == Some("free"))
+    }
+}
+
+impl CodexAuthAccount {
+    pub fn plan(&self) -> Option<&str> {
+        // A local rollout can supply usage from a different workspace after a switch.
+        self.plan
+            .as_deref()
+            .or_else(|| self.last_usage.as_ref()?.plan_type.as_deref())
+    }
+
+    fn is_paid(&self) -> bool {
+        paid_plan(self.plan()).is_some()
+    }
+
+    pub fn quota(
+        &self,
+        usage: &CodexAuthUsage,
+        observed_at: i64,
+        active: bool,
+    ) -> Result<PaidAccountQuota, QuotaRelayError> {
+        let plan = paid_plan(self.plan()).ok_or_else(|| {
+            QuotaRelayError::InvalidRegistry(format!("{} 缺少支持的付费计划", self.email))
+        })?;
+        if usage.plan_type.is_some() && paid_plan(usage.plan_type.as_deref()) != Some(plan) {
             return Err(QuotaRelayError::InvalidRegistry(format!(
                 "{} 的计划与额度记录不一致",
-                account.email
+                self.email
             )));
         }
         let windows = [usage.primary.as_ref(), usage.secondary.as_ref()];
         let five_hour = find_window(&windows, 300).ok_or_else(|| {
-            QuotaRelayError::InvalidRegistry(format!("{} 缺少 5 小时额度窗口", account.email))
+            QuotaRelayError::InvalidRegistry(format!("{} 缺少 5 小时额度窗口", self.email))
         })?;
         let weekly = find_window(&windows, 10_080).ok_or_else(|| {
-            QuotaRelayError::InvalidRegistry(format!("{} 缺少周额度窗口", account.email))
+            QuotaRelayError::InvalidRegistry(format!("{} 缺少周额度窗口", self.email))
         })?;
-        validate_window(&account.email, "5 小时", five_hour)?;
-        validate_window(&account.email, "周", weekly)?;
-        let observed_at = account.last_usage_at.ok_or_else(|| {
-            QuotaRelayError::InvalidRegistry(format!("{} 缺少 last_usage_at", account.email))
-        })?;
-        paid.push(PaidAccountQuota {
-            email: account.email,
-            plan: normalized_plan.into(),
-            active: active_account_key.as_deref() == Some(account.account_key.as_str()),
-            five_hour_remaining_percent: (100 - five_hour.used_percent) as u8,
-            five_hour_resets_at: five_hour.resets_at,
-            weekly_remaining_percent: (100 - weekly.used_percent) as u8,
-            weekly_resets_at: weekly.resets_at,
-            observed_at,
+        let (five_hour_remaining_percent, five_hour_resets_at) =
+            quota_window(&self.email, "5 小时", five_hour)?;
+        let (weekly_remaining_percent, weekly_resets_at) = quota_window(&self.email, "周", weekly)?;
+        let credits = usage.credits.as_ref().and_then(|credits| {
+            credits
+                .balance
+                .as_deref()
+                .and_then(|balance| {
+                    balance
+                        .trim()
+                        .split('.')
+                        .next()?
+                        .parse::<i64>()
+                        .ok()
+                        .map(|value| value.to_string())
+                })
+                .or_else(|| credits.unlimited.then(|| "不限".into()))
         });
+        Ok(PaidAccountQuota {
+            account_key: self.account_key.clone(),
+            email: self.email.clone(),
+            plan: plan.into(),
+            active,
+            five_hour_remaining_percent,
+            five_hour_resets_at,
+            weekly_remaining_percent,
+            weekly_resets_at,
+            observed_at,
+            credits,
+            reset_credits: usage.reset_credits.filter(|count| *count >= 0),
+        })
     }
+}
 
-    paid.sort_by(|left, right| left.email.cmp(&right.email));
-    if paid.len() != expected_count {
-        return Err(QuotaRelayError::InvalidRegistry(format!(
-            "付费账号数量为 {}，预期 {}；拒绝覆盖现有画面",
-            paid.len(),
-            expected_count
-        )));
+fn paid_plan(plan: Option<&str>) -> Option<&'static str> {
+    match plan {
+        Some("team" | "business") => Some("Business"),
+        Some("plus") => Some("Plus"),
+        _ => None,
     }
-    Ok(paid)
 }
 
 fn find_window<'a>(
@@ -250,21 +344,23 @@ fn find_window<'a>(
     windows
         .iter()
         .flatten()
-        .find(|window| window.window_minutes == window_minutes)
+        .find(|window| window.window_minutes == Some(window_minutes))
         .copied()
 }
 
-fn validate_window(
+fn quota_window(
     email: &str,
     label: &str,
     window: &CodexAuthWindow,
-) -> Result<(), QuotaRelayError> {
-    if !(0..=100).contains(&window.used_percent) || window.resets_at <= 0 {
-        return Err(QuotaRelayError::InvalidRegistry(format!(
-            "{email} 的{label}额度窗口无效"
-        )));
+) -> Result<(u8, i64), QuotaRelayError> {
+    if let Some(resets_at) = window.resets_at {
+        if resets_at > 0 && (0.0..=100.0).contains(&window.used_percent) {
+            return Ok(((100.0 - window.used_percent) as u8, resets_at));
+        }
     }
-    Ok(())
+    Err(QuotaRelayError::InvalidRegistry(format!(
+        "{email} 的{label}额度窗口无效"
+    )))
 }
 
 pub fn validate_freshness(
@@ -289,7 +385,10 @@ pub fn apply_account_labels(
     labels: &HashMap<String, String>,
 ) -> Result<(), QuotaRelayError> {
     for account in accounts {
-        if let Some(label) = labels.get(&account.email) {
+        if let Some(label) = labels
+            .get(&account.account_key)
+            .or_else(|| labels.get(&account.email))
+        {
             let label = label.trim();
             if label.is_empty() || label.chars().count() > 64 {
                 return Err(QuotaRelayError::InvalidRegistry(format!(
@@ -306,6 +405,7 @@ pub fn apply_account_labels(
 pub fn render_paid_accounts(
     accounts: &[PaidAccountQuota],
     generated_at: i64,
+    active_is_free: bool,
 ) -> Result<BwryFrame, QuotaRelayError> {
     if accounts.len() != 3 {
         return Err(QuotaRelayError::Render(
@@ -336,6 +436,18 @@ pub fn render_paid_accounts(
         HorizontalAlignment::Right,
         BwryColor::White,
     )?;
+    if active_is_free {
+        frame.fill(159, 12, 82, 23, BwryColor::Yellow);
+        draw_text_aligned(
+            &mut frame,
+            &small_font,
+            "当前 Free",
+            200,
+            29,
+            HorizontalAlignment::Center,
+            BwryColor::Black,
+        )?;
+    }
 
     for (index, account) in accounts.iter().enumerate() {
         let y = 50 + index as i32 * 73;
@@ -363,7 +475,11 @@ pub fn render_paid_accounts(
         draw_text(
             &mut frame,
             &body_font,
-            &fit_text(&body_font, &account.email, 260),
+            &fit_text(
+                &body_font,
+                &account.email,
+                if account.active { 260 } else { 306 },
+            ),
             80,
             y + 17,
             BwryColor::Black,
@@ -380,7 +496,7 @@ pub fn render_paid_accounts(
             )?;
         }
 
-        frame.fill(199, y + 27, 1, 31, BwryColor::Black);
+        frame.fill(199, y + 26, 1, 25, BwryColor::Black);
         draw_quota_half(
             &mut frame,
             (&body_font, &small_font),
@@ -399,6 +515,21 @@ pub fn render_paid_accounts(
             y,
             (account.weekly_remaining_percent, account.weekly_resets_at),
             generated_at,
+        )?;
+        let reset_credits = account
+            .reset_credits
+            .map_or_else(|| "-".into(), |count| count.to_string());
+        let credits = format!(
+            "点数 {}     重置次数 {reset_credits}",
+            account.credits.as_deref().unwrap_or("-")
+        );
+        draw_text(
+            &mut frame,
+            &small_font,
+            &credits,
+            14,
+            y + 64,
+            BwryColor::Black,
         )?;
     }
 
@@ -435,7 +566,7 @@ fn draw_quota_half(
         body_font,
         &format!("{remaining_percent}%"),
         x,
-        y + 40,
+        y + 37,
         text_color,
     )?;
     draw_text(
@@ -443,14 +574,14 @@ fn draw_quota_half(
         small_font,
         &format_reset(resets_at, generated_at),
         x + 43,
-        y + 40,
+        y + 37,
         BwryColor::Black,
     )?;
 
-    frame.fill(x, y + 48, 174, 9, BwryColor::Black);
+    frame.fill(x, y + 42, 174, 9, BwryColor::Black);
     let inner = u32::from(remaining_percent) * 170 / 100;
     if inner > 0 {
-        frame.fill(x + 2, y + 50, inner, 5, bar_color);
+        frame.fill(x + 2, y + 44, inner, 5, bar_color);
     }
     Ok(())
 }
@@ -768,6 +899,8 @@ pub enum QuotaRelayError {
     Image(#[from] image::ImageError),
     #[error("codex-auth 注册表无效：{0}")]
     InvalidRegistry(String),
+    #[error("刷新失败：{0}；保留上一张成功画面")]
+    Refresh(String),
     #[error("{email} 的额度时间 {observed_at} 早于最低要求 {minimum}；拒绝覆盖现有画面")]
     StaleUsage {
         email: String,
@@ -790,6 +923,7 @@ mod tests {
     fn accounts() -> Vec<PaidAccountQuota> {
         vec![
             PaidAccountQuota {
+                account_key: "one-key".into(),
                 email: "one@example.com".into(),
                 plan: "Business".into(),
                 active: true,
@@ -798,8 +932,11 @@ mod tests {
                 weekly_remaining_percent: 82,
                 weekly_resets_at: 1_790_500_000,
                 observed_at: 1_790_000_000,
+                credits: Some("0".into()),
+                reset_credits: Some(1),
             },
             PaidAccountQuota {
+                account_key: "two-key".into(),
                 email: "two@example.com".into(),
                 plan: "Business".into(),
                 active: false,
@@ -808,8 +945,11 @@ mod tests {
                 weekly_remaining_percent: 20,
                 weekly_resets_at: 1_790_500_000,
                 observed_at: 1_790_000_000,
+                credits: None,
+                reset_credits: Some(0),
             },
             PaidAccountQuota {
+                account_key: "three-key".into(),
                 email: "three@example.com".into(),
                 plan: "Plus".into(),
                 active: false,
@@ -818,13 +958,15 @@ mod tests {
                 weekly_remaining_percent: 19,
                 weekly_resets_at: 1_790_500_000,
                 observed_at: 1_790_000_000,
+                credits: None,
+                reset_credits: None,
             },
         ]
     }
 
     #[test]
     fn frame_is_exact_note4c_bwry_size_and_palette_order() {
-        let frame = render_paid_accounts(&accounts(), 1_790_000_000).unwrap();
+        let frame = render_paid_accounts(&accounts(), 1_790_000_000, false).unwrap();
         assert_eq!(frame.packed_bytes().len(), 30_000);
         assert_eq!(frame.packed_bytes()[0], 0);
         assert_eq!(quota_color(100), BwryColor::Yellow);
@@ -838,7 +980,7 @@ mod tests {
 
     #[test]
     fn manifest_is_content_addressed() {
-        let frame = render_paid_accounts(&accounts(), 1_790_000_000).unwrap();
+        let frame = render_paid_accounts(&accounts(), 1_790_000_000, false).unwrap();
         let manifest = build_manifest(&frame, 1_790_000_000);
         assert_eq!(manifest.revision, frame.sha256());
         assert_eq!(
@@ -866,7 +1008,10 @@ mod tests {
             ]}}"#
         )
         .unwrap();
-        let paid = read_paid_accounts(registry.path(), 2).unwrap();
+        let paid = CodexAuthRegistry::read(registry.path())
+            .unwrap()
+            .cached_quotas(2)
+            .unwrap();
         assert_eq!(paid[0].plan, "Business");
         assert_eq!(paid[0].five_hour_remaining_percent, 77);
         assert_eq!(paid[0].weekly_remaining_percent, 59);
@@ -887,7 +1032,10 @@ mod tests {
             ]}}"#
         )
         .unwrap();
-        let error = read_paid_accounts(registry.path(), 1).unwrap_err();
+        let error = CodexAuthRegistry::read(registry.path())
+            .unwrap()
+            .cached_quotas(1)
+            .unwrap_err();
         assert!(error.to_string().contains("缺少周额度窗口"));
     }
 
@@ -903,10 +1051,11 @@ mod tests {
         let mut paid = accounts();
         let labels = HashMap::from([
             ("one@example.com".into(), "Business A".into()),
+            ("one-key".into(), "Workspace A".into()),
             ("three@example.com".into(), "Personal Plus".into()),
         ]);
         apply_account_labels(&mut paid, &labels).unwrap();
-        assert_eq!(paid[0].email, "Business A");
+        assert_eq!(paid[0].email, "Workspace A");
         assert!(paid[0].active);
         assert_eq!(paid[1].email, "two@example.com");
         assert_eq!(paid[2].email, "Personal Plus");

@@ -3,13 +3,13 @@
 ## Sensitive data that stays local
 
 - Codex/OpenAI account tokens remain under the Mac user's `~/.codex` directory.
-- The sequential refresher reads `codex-auth`'s registry and local auth snapshots but never uploads registry JSON or tokens. Access tokens are sent only to the documented OpenAI usage endpoint from the Mac.
+- `codex-auth` uses the local auth snapshots to refresh usage on the Mac. The relay reads the registry and CLI usage results locally.
 - The SSH publishing key remains on the Mac.
 - The HTTPS read-only password is stored in the server password file and NOTE4C NVS; it must not be committed.
 
 ## Data published to the server
 
-The server stores a rendered PNG, a 30,000-byte BWRY frame, and a manifest. The rendered images contain the displayed account label, plan, five-hour and weekly quota status, active-account marker, and update time. Configure `accountLabels` in the local sync configuration if real email addresses must not leave the Mac.
+The server stores a rendered PNG, a 30,000-byte BWRY frame, and a manifest. The rendered images contain the displayed account label, plan, quota windows, credit balance, reset credits, active-account marker, and update time. Configure `accountLabels` in the local sync configuration if real email addresses must not leave the Mac.
 
 The manifest contains only revision, timestamp, frame path, SHA-256, size, format, width, and height.
 

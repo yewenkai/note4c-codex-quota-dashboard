@@ -1,6 +1,6 @@
 # NOTE4C Codex 多账号额度看板
 
-这是一个面向 **ZECTRIX NOTE4C 4C 四色墨水屏**的自托管 Codex 额度看板。它固定显示 3 个 Business / Plus 账号的 5 小时与周额度，忽略 Free 账号，并标记 `codex-auth` 当前选中的账号。
+这是一个面向 **ZECTRIX NOTE4C 4C 四色墨水屏**的自托管 Codex 额度看板。它固定显示 3 个 Business / Plus 账号的 5 小时额度、周额度、点数和可用重置次数。当前选中付费账号时标记对应行，选中 Free 时在页头显示「当前 Free」。
 
 ![使用虚构账号生成的示例画面](docs/images/dashboard-sample.png)
 
@@ -10,7 +10,7 @@
 
 NOTE4C 无法直接访问 OpenAI API，也不适合保存 Codex 登录令牌。本项目把链路拆成三段：
 
-1. Mac 使用 `codex-auth` 管理的本地认证快照，顺序刷新 3 个付费账号的额度；
+1. Mac 调用 `codex-auth list --api --json`，按账号标识核验 3 个付费账号的额度；
 2. Rust relay 在本地生成 400×300、30,000 字节的 BWRY 2bpp 画面，再通过 SSH 发布到你的公网服务器；
 3. NOTE4C 只通过 HTTPS 读取 manifest 和新画面，SHA-256 校验成功后才覆盖旧画面。
 
@@ -22,8 +22,8 @@ NOTE4C 无法直接访问 OpenAI API，也不适合保存 Codex 登录令牌。�
 | --- | --- |
 | 设备 | ZECTRIX NOTE4C **4C**，ESP32-S3 N16R8，400×300 SSD2683 BWRY 四色屏 |
 | Mac | 已安装并登录 Codex CLI；定时任务只在 Mac 醒着时运行 |
-| 多账号工具 | 第三方 [`codex-auth`](https://github.com/Loongphy/codex-auth)，本项目测试版本为 0.2.10 |
-| Node.js | 22.21+ 或 24.x；`codex-auth` 的 API 刷新需要较新的 Node.js |
+| 多账号工具 | 第三方 [`codex-auth`](https://github.com/Loongphy/codex-auth)，本项目测试版本为 0.3.1，注册表为 schema 4 |
+| Node.js | macOS 启动脚本查找 Node.js 22.21+ |
 | Relay 构建 | Rust 1.85+，以及 `ssh`、`scp` |
 | 公网服务 | 任意可从 Mac 和 NOTE4C 访问的 VPS/静态 HTTPS 主机；22 用于 SSH 发布，80/443 用于签发证书和 HTTPS 读取 |
 | TLS | NOTE4C 只接受 HTTPS，证书必须能被 ESP-IDF CA bundle 信任；推荐使用域名和正常的 443 端口 |
@@ -51,7 +51,7 @@ sequenceDiagram
     participant O as OpenAI
     participant S as 公网 HTTPS 服务
     participant N as NOTE4C 4C
-    M->>O: 顺序刷新 3 个付费账号
+    M->>O: 通过 codex-auth 刷新额度
     M->>M: 过滤付费账号并渲染 BWRY 帧
     M->>S: SSH 原子发布帧、预览图、manifest
     N->>S: 每 5 分钟读取 manifest
@@ -66,10 +66,11 @@ sequenceDiagram
 - 工作日 08:30–17:15：在 `:00`、`:15`、`:30`、`:45` 尝试刷新。
 - 其他时间和周末：整点尝试刷新。
 - Mac 休眠时不会主动运行；唤醒后由后续调度或注册表变化继续同步。
-- 手工执行 `codex-auth list --api` 会更新注册表，文件监听任务随后发布新画面。
-- 顺序刷新器会为每个付费账号单独重试；任一账号最终没有取得实时成功响应时，relay 退出且不覆盖服务器上的 manifest。
+- 注册表有变化时，监听任务检查付费缓存是否足够新，通过后发布画面。
+- 强制刷新依据本次 API 结果，三个付费账号都成功才发布。Free 账号刷新失败时，付费画面仍可更新。
 - 每个账号左半段显示 5 小时剩余百分比、重置倒计时和进度条，右半段显示周剩余百分比、重置倒计时和进度条。
-- 5 小时或周额度任一窗口缺失、过期或字段无效时都拒绝发布，继续保留上一张成功画面。
+- 点数和重置次数缺失时显示 `-`，收到零值时显示 `0`。
+- 5 小时或周额度窗口缺失、字段无效时保留上一张成功画面。
 - NOTE4C 默认每 5 分钟检查一次，但只有 revision 改变才全刷墨水屏。
 
 ## 1. 构建 relay
@@ -116,11 +117,11 @@ cp relay/target/release/codex-note4c-relay \
   "$HOME/Library/Application Support/note4c-codex-quota/"
 cp deploy/macos/note4c-scheduled-sync.sh \
   "$HOME/Library/Application Support/note4c-codex-quota/"
-cp deploy/macos/codex-auth-sequential-refresh.mjs \
-  "$HOME/Library/Application Support/note4c-codex-quota/"
 ```
 
-编辑 `note4c-sync.json`，替换绝对路径、顺序刷新器路径、服务器地址和 SSH 私钥。顺序刷新器读取 `codex-auth` 管理的本地认证快照，只在 Mac 上逐个刷新 3 个付费账号；全部成功后才原子更新注册表。模板中的 `accountLabels` 是可选项：
+编辑 `note4c-sync.json`，将 `codexAuthBin` 设为 `command -v codex-auth` 返回的绝对路径，并填写服务器地址和 SSH 私钥。升级已有的 schema 4 部署时，用新构建的 relay 替换旧程序，同时将 `codexAuthBin` 从顺序刷新脚本改为新版 CLI。仍使用 schema 3 的部署继续用原来的顺序刷新脚本。
+
+`accountLabels` 可以用邮箱或 `account_key` 指定显示别名。同一邮箱下有多个工作区时，可以用 `codex-auth list --json` 返回的 `account_key` 分别命名，账号标识的配置优先于邮箱配置。
 
 ```json
 "accountLabels": {
@@ -138,7 +139,7 @@ install -m 0755 deploy/macos/note4c-quota-refresh \
 note4c-quota-refresh
 ```
 
-这个命令会等待其他同步结束，强制顺序刷新本地额度并立即上传。命令返回成功后，NOTE4C 会在下一次 5 分钟轮询时自动拉取新 revision。
+这个命令会等待其他同步结束，刷新本地额度并立即上传。命令返回成功后，NOTE4C 会在下一次 5 分钟轮询时自动拉取新 revision。
 
 然后按 [docs/deployment.zh-CN.md](docs/deployment.zh-CN.md) 安装两个 LaunchAgent。
 

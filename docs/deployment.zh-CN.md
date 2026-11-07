@@ -6,7 +6,7 @@
 
 | 方向 | 端口 | 用途 |
 | --- | --- | --- |
-| Mac → OpenAI | HTTPS 443 | 顺序刷新器使用 `codex-auth` 本地认证快照读取额度 |
+| Mac → OpenAI | HTTPS 443 | `codex-auth` 使用本地认证快照刷新额度 |
 | Mac → 公网服务器 | SSH 22 | 上传帧、预览和 manifest |
 | NOTE4C → 公网服务器 | HTTPS 443 | 只读拉取 manifest 和帧 |
 | 浏览器 → 公网服务器 | HTTPS 443 | 查看预览 |
@@ -104,12 +104,12 @@ sudo systemctl reload nginx
 
 编辑 `deploy/macos/note4c-sync.example.json` 的副本：
 
-- `registryPath`：`codex-auth` 注册表的绝对路径；
-- `codexAuthBin`：仓库内 `codex-auth-sequential-refresh.mjs` 的绝对路径；它使用 `codex-auth` 管理的认证快照顺序请求额度，避免多账号并发导致连接重置；
+- `registryPath`：注册表的绝对路径，schema 4 使用 `CODEX_HOME/accounts/registry.json`，其中 `CODEX_HOME` 默认为 `~/.codex`；
+- `codexAuthBin`：schema 4 使用 `command -v codex-auth` 返回的新版 CLI 绝对路径；schema 3 继续使用仓库内的 `codex-auth-sequential-refresh.mjs`；
 - `expectedPaidAccounts`：当前布局必须为 `3`；
-- `refreshAttempts`：顺序刷新器已经自行重试，推荐设为 `1`；
+- `refreshAttempts`：新版 CLI 默认最多尝试 `3` 次；旧版顺序刷新器已逐账号重试，可设为 `1`；
 - `maximumCacheAgeSeconds`：文件监听发布允许的最大缓存年龄；
-- `accountLabels`：可选的邮箱到显示别名映射；
+- `accountLabels`：可选的显示别名映射，支持邮箱或 `account_key`，优先使用 `account_key`；
 - `stateDirectory`：本地生成文件目录；
 - `publisher.host`：域名或公网 IP，不写 `https://`；
 - `publisher.identityFile`：专用 SSH 私钥的绝对路径。
@@ -126,7 +126,7 @@ install -m 0755 deploy/macos/note4c-quota-refresh \
 note4c-quota-refresh
 ```
 
-它会等待正在执行的同步任务结束，然后顺序刷新全部付费账号、生成新帧并原子上传。命令返回“上传完成”才代表服务器 manifest 已更新；NOTE4C 默认每 5 分钟轮询，发现新 revision 后自动下载并刷新。
+它会等待正在执行的同步任务结束，然后刷新额度、生成新帧并原子上传。命令返回“上传完成”时，NOTE4C 会在下一轮询周期检查新 revision 并刷新。
 
 如果运行目录不是默认的 `~/Library/Application Support/note4c-codex-quota`，可设置 `NOTE4C_QUOTA_HOME`，或用 `--config`、`--relay` 指定绝对路径。HTTP 401/403 表示对应账号的本地认证快照已失效，需要先用 `codex-auth login` 重新登录该账号；此时旧画面会继续保留。
 
@@ -163,7 +163,7 @@ launchctl bootstrap "gui/$(id -u)" \
 
 ## 故障时的保留策略
 
-- 顺序刷新器任一付费账号最终失败：不改注册表、不生成、不发布；
+- 任一付费账号最终刷新失败：保留上一张成功画面；
 - 付费账号不是恰好 3 个：不发布；
 - 文件监听遇到超过 5 分钟的缓存：不发布；
 - SSH/SCP 失败：旧 manifest 保持不变；
