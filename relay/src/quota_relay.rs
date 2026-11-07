@@ -757,12 +757,9 @@ fn format_free_quota(window: Option<(u8, i64)>, now: i64) -> String {
     if resets_at <= now {
         return "重置待确认".into();
     }
-    if remaining == 100 {
-        return "100% 可用".into();
-    }
     let time = local_tm(resets_at);
     format!(
-        "{remaining}% {:02}月{:02}日 {:02}:{:02} 重置",
+        "{remaining}% {:02}/{:02} {:02}:{:02} 重置",
         time.tm_mon + 1,
         time.tm_mday,
         time.tm_hour,
@@ -1166,7 +1163,9 @@ mod tests {
             format_free_quota(free[0].window, 1_789_023_600),
             "重置待确认"
         );
-        assert_eq!(format_free_quota(free[1].window, now), "100% 可用");
+        let full = format_free_quota(free[1].window, now);
+        assert!(full.starts_with("100% "));
+        assert!(full.ends_with(" 重置"));
         assert!(free[0].active && !free[1].active);
 
         registry.active_account_key = Some("free-b".into());
