@@ -25,7 +25,7 @@
     },
     {
       "account_key": "business-b",
-      "email": "business.two@example.com",
+      "email": "business.two@example.net",
       "plan": "business",
       "last_usage": {
         "plan_type": "business",
@@ -68,6 +68,7 @@
     {
       "account_key": "free-a",
       "email": "business.one@example.com",
+      "alias": "个人",
       "plan": "free",
       "last_usage": {
         "plan_type": "free",
@@ -83,8 +84,19 @@
     },
     {
       "account_key": "free-b",
-      "email": "business.two@example.com",
-      "plan": "free"
+      "email": "business.two@example.net",
+      "plan": "free",
+      "last_usage": {
+        "plan_type": "free",
+        "primary": {
+          "used_percent": 0,
+          "window_minutes": 43200,
+          "resets_at": 1789025400
+        },
+        "secondary": null,
+        "reset_credits": 0
+      },
+      "last_usage_at": 1786431600
     }
   ]
 }

@@ -145,6 +145,7 @@ pub struct CodexAuthRegistry {
 pub struct CodexAuthAccount {
     pub account_key: String,
     pub email: String,
+    pub alias: Option<String>,
     pub plan: Option<String>,
     pub last_usage: Option<CodexAuthUsage>,
     pub last_usage_at: Option<i64>,
@@ -188,10 +189,11 @@ pub struct PaidAccountQuota {
     pub reset_credits: Option<i64>,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ActiveFreeQuota {
-    Unknown,
-    Window { remaining: u8, resets_at: i64 },
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct FreeAccountQuota {
+    label: String,
+    pub active: bool,
+    pub window: Option<(u8, i64)>,
 }
 
 impl CodexAuthRegistry {
@@ -260,24 +262,37 @@ impl CodexAuthRegistry {
         self.active_account_key.as_deref() == Some(account.account_key.as_str())
     }
 
-    pub fn active_free_quota(&self) -> Option<ActiveFreeQuota> {
-        let account = self
+    pub fn free_quotas(&self, labels: &HashMap<String, String>) -> Vec<FreeAccountQuota> {
+        let mut free: Vec<_> = self
             .accounts
             .iter()
-            .find(|account| self.is_active(account) && account.plan() == Some("free"))?;
-        let window = account
-            .last_usage
-            .as_ref()
-            .filter(|usage| usage.plan_type.as_deref() == Some("free"))
-            .and_then(|usage| usage.primary.as_ref())
-            .and_then(CodexAuthWindow::remaining_and_reset);
-        Some(match window {
-            Some((remaining, resets_at)) => ActiveFreeQuota::Window {
-                remaining,
-                resets_at,
-            },
-            None => ActiveFreeQuota::Unknown,
-        })
+            .filter(|account| account.plan() == Some("free"))
+            .collect();
+        free.sort_by(|left, right| {
+            (&left.email, &left.account_key).cmp(&(&right.email, &right.account_key))
+        });
+        free.into_iter()
+            .map(|account| {
+                let domain = account.email.rsplit_once('@').map(|(_, domain)| domain);
+                let label = configured_label(labels, &account.account_key, &account.email)
+                    .or(account.alias.as_deref())
+                    .map(str::trim)
+                    .filter(|label| !label.is_empty())
+                    .or(domain)
+                    .unwrap_or_default();
+                let window = account
+                    .last_usage
+                    .as_ref()
+                    .filter(|usage| usage.plan_type.as_deref() == Some("free"))
+                    .and_then(|usage| usage.primary.as_ref())
+                    .and_then(CodexAuthWindow::remaining_and_reset);
+                FreeAccountQuota {
+                    label: label.into(),
+                    active: self.is_active(account),
+                    window,
+                }
+            })
+            .collect()
     }
 }
 
@@ -408,10 +423,7 @@ pub fn apply_account_labels(
     labels: &HashMap<String, String>,
 ) -> Result<(), QuotaRelayError> {
     for account in accounts {
-        if let Some(label) = labels
-            .get(&account.account_key)
-            .or_else(|| labels.get(&account.email))
-        {
+        if let Some(label) = configured_label(labels, &account.account_key, &account.email) {
             let label = label.trim();
             if label.is_empty() || label.chars().count() > 64 {
                 return Err(QuotaRelayError::InvalidRegistry(format!(
@@ -425,10 +437,21 @@ pub fn apply_account_labels(
     Ok(())
 }
 
+fn configured_label<'a>(
+    labels: &'a HashMap<String, String>,
+    account_key: &str,
+    email: &str,
+) -> Option<&'a str> {
+    labels
+        .get(account_key)
+        .or_else(|| labels.get(email))
+        .map(String::as_str)
+}
+
 pub fn render_paid_accounts(
     accounts: &[PaidAccountQuota],
     generated_at: i64,
-    active_free_quota: Option<ActiveFreeQuota>,
+    free: &[FreeAccountQuota],
 ) -> Result<BwryFrame, QuotaRelayError> {
     if accounts.len() != 3 {
         return Err(QuotaRelayError::Render(
@@ -440,40 +463,7 @@ pub fn render_paid_accounts(
     let body_font = FontRenderer::new::<u8g2_font_wqy14_t_gb2312>();
     let small_font = FontRenderer::new::<u8g2_font_wqy13_t_gb2312>();
 
-    frame.fill(0, 0, DISPLAY_WIDTH, 46, BwryColor::Black);
-    draw_text(
-        &mut frame,
-        &header_font,
-        "CODEX 额度",
-        14,
-        30,
-        BwryColor::White,
-    )?;
-    let update = format_sync_time(generated_at);
-    draw_text_aligned(
-        &mut frame,
-        &small_font,
-        &update,
-        386,
-        29,
-        HorizontalAlignment::Right,
-        BwryColor::White,
-    )?;
-    if let Some(quota) = active_free_quota {
-        let (title, detail) = format_active_free_quota(quota, generated_at);
-        frame.fill(125, 5, 150, 36, BwryColor::Yellow);
-        for (line, y) in [(&title, 20), (&detail, 35)] {
-            draw_text_aligned(
-                &mut frame,
-                &small_font,
-                line,
-                200,
-                y,
-                HorizontalAlignment::Center,
-                BwryColor::Black,
-            )?;
-        }
-    }
+    draw_header(&mut frame, (&header_font, &small_font), free, generated_at)?;
 
     for (index, account) in accounts.iter().enumerate() {
         let y = 50 + index as i32 * 73;
@@ -573,6 +563,73 @@ pub fn render_paid_accounts(
     draw_text(&mut frame, &small_font, ">=20%", 168, 289, BwryColor::White)?;
     draw_text(&mut frame, &small_font, "<20%", 288, 289, BwryColor::White)?;
     Ok(frame)
+}
+
+fn draw_header(
+    frame: &mut BwryFrame,
+    fonts: (&FontRenderer, &FontRenderer),
+    free: &[FreeAccountQuota],
+    generated_at: i64,
+) -> Result<(), QuotaRelayError> {
+    let (header_font, small_font) = fonts;
+    frame.fill(0, 0, DISPLAY_WIDTH, 46, BwryColor::Black);
+    draw_text(frame, header_font, "CODEX 额度", 14, 20, BwryColor::White)?;
+
+    let mut rows: Vec<_> = free.iter().enumerate().take(2).collect();
+    if let Some(active) = free
+        .iter()
+        .enumerate()
+        .skip(2)
+        .find(|(_, account)| account.active)
+    {
+        rows[1] = active;
+    }
+    let hidden = free.len() - rows.len();
+    let mut update = format_sync_time(generated_at);
+    if hidden > 0 {
+        update.push_str(&format!(" +{hidden}"));
+    }
+    draw_text(frame, small_font, &update, 14, 37, BwryColor::White)?;
+
+    for (slot, (index, account)) in rows.into_iter().enumerate() {
+        let y = 4 + slot as i32 * 20;
+        let color = if account.active {
+            frame.fill(109, y, 277, 18, BwryColor::Yellow);
+            BwryColor::Black
+        } else {
+            BwryColor::White
+        };
+        let status = format_free_quota(account.window, generated_at);
+        let status_width = small_font
+            .get_rendered_dimensions(status.as_str(), Point::zero(), VerticalPosition::Baseline)
+            .map_err(|error| QuotaRelayError::Render(format!("{error:?}")))?
+            .advance
+            .x;
+        let label_x = 116;
+        let status_right = 379;
+        let label_width = status_right - status_width - label_x - 10;
+        let name = format!("Free{} {}", index + 1, account.label);
+        let fitted_name = fit_text(small_font, &name, label_width);
+        let fitted_name = if fitted_name == name {
+            fitted_name
+        } else {
+            format!(
+                "{}...",
+                fit_text(small_font, &name, label_width - 12).trim_end()
+            )
+        };
+        draw_text(frame, small_font, &fitted_name, label_x, y + 13, color)?;
+        draw_text_aligned(
+            frame,
+            small_font,
+            &status,
+            status_right,
+            y + 13,
+            HorizontalAlignment::Right,
+            color,
+        )?;
+    }
+    Ok(())
 }
 
 fn draw_quota_half(
@@ -693,30 +750,24 @@ fn format_sync_time(timestamp: i64) -> String {
     format!("更新 {:02}:{:02}", time.tm_hour, time.tm_min)
 }
 
-fn format_active_free_quota(quota: ActiveFreeQuota, now: i64) -> (String, String) {
-    let ActiveFreeQuota::Window {
-        remaining,
-        resets_at,
-    } = quota
-    else {
-        return ("当前 Free".into(), "重置时间未知".into());
+fn format_free_quota(window: Option<(u8, i64)>, now: i64) -> String {
+    let Some((remaining, resets_at)) = window else {
+        return "重置时间未知".into();
     };
     if resets_at <= now {
-        return ("当前 Free".into(), "重置待确认".into());
+        return "重置待确认".into();
     }
-    let detail = if remaining == 100 {
-        "额度可用".into()
-    } else {
-        let time = local_tm(resets_at);
-        format!(
-            "{:02}月{:02}日 {:02}:{:02} 重置",
-            time.tm_mon + 1,
-            time.tm_mday,
-            time.tm_hour,
-            time.tm_min
-        )
-    };
-    (format!("当前 Free {remaining}%"), detail)
+    if remaining == 100 {
+        return "100% 可用".into();
+    }
+    let time = local_tm(resets_at);
+    format!(
+        "{remaining}% {:02}月{:02}日 {:02}:{:02} 重置",
+        time.tm_mon + 1,
+        time.tm_mday,
+        time.tm_hour,
+        time.tm_min
+    )
 }
 
 fn format_reset(resets_at: i64, now: i64) -> String {
@@ -1018,7 +1069,7 @@ mod tests {
 
     #[test]
     fn frame_is_exact_note4c_bwry_size_and_palette_order() {
-        let frame = render_paid_accounts(&accounts(), 1_790_000_000, None).unwrap();
+        let frame = render_paid_accounts(&accounts(), 1_790_000_000, &[]).unwrap();
         assert_eq!(frame.packed_bytes().len(), 30_000);
         assert_eq!(frame.packed_bytes()[0], 0);
         assert_eq!(quota_color(100), BwryColor::Yellow);
@@ -1032,7 +1083,7 @@ mod tests {
 
     #[test]
     fn manifest_is_content_addressed() {
-        let frame = render_paid_accounts(&accounts(), 1_790_000_000, None).unwrap();
+        let frame = render_paid_accounts(&accounts(), 1_790_000_000, &[]).unwrap();
         let manifest = build_manifest(&frame, 1_790_000_000);
         assert_eq!(manifest.revision, frame.sha256());
         assert_eq!(
@@ -1099,33 +1150,35 @@ mod tests {
     }
 
     #[test]
-    fn free_status_separates_available_exhausted_and_expired_windows() {
+    fn free_status_preserves_each_window_when_switching_accounts() {
         let mut registry: CodexAuthRegistry =
             serde_json::from_str(include_str!("../tests/fixtures/registry.sample.json")).unwrap();
         let now = 1_786_431_600;
-        let quota = registry.active_free_quota().unwrap();
-        let (title, detail) = format_active_free_quota(quota, now);
-        assert_eq!(title, "当前 Free 0%");
-        assert!(detail.ends_with(" 重置"));
+        let labels = HashMap::from([("free-b".into(), "备用".into())]);
+        let free = registry.free_quotas(&labels);
+        assert_eq!(free.len(), 2);
+        assert_eq!(free[0].label, "个人");
+        assert_eq!(free[1].label, "备用");
+        let exhausted = format_free_quota(free[0].window, now);
+        assert!(exhausted.starts_with("0% "));
+        assert!(exhausted.ends_with(" 重置"));
         assert_eq!(
-            format_active_free_quota(quota, 1_789_023_600).1,
+            format_free_quota(free[0].window, 1_789_023_600),
             "重置待确认"
         );
+        assert_eq!(format_free_quota(free[1].window, now), "100% 可用");
+        assert!(free[0].active && !free[1].active);
 
-        let free = registry
-            .accounts
-            .iter_mut()
-            .find(|a| a.account_key == "free-a")
-            .unwrap();
-        free.last_usage
-            .as_mut()
-            .unwrap()
-            .primary
-            .as_mut()
-            .unwrap()
-            .used_percent = 0.0;
-        let quota = registry.active_free_quota().unwrap();
-        assert_eq!(format_active_free_quota(quota, now).1, "额度可用");
+        registry.active_account_key = Some("free-b".into());
+        let switched = registry.free_quotas(&labels);
+        assert!(!switched[0].active && switched[1].active);
+        assert_eq!(switched[0].window, free[0].window);
+        assert_eq!(switched[1].window, free[1].window);
+
+        registry.active_account_key = Some("business-a".into());
+        let free = registry.free_quotas(&HashMap::new());
+        assert!(free.iter().all(|a| !a.active));
+        assert_eq!(free[1].label, "example.net");
     }
 
     #[test]

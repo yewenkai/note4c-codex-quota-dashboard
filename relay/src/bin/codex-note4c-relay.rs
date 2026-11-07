@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -35,8 +35,11 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             ensure_no_args(args)?;
             let registry = CodexAuthRegistry::read(registry)?;
             let accounts = registry.cached_quotas(3)?;
-            let frame =
-                render_paid_accounts(&accounts, generated_at, registry.active_free_quota())?;
+            let frame = render_paid_accounts(
+                &accounts,
+                generated_at,
+                &registry.free_quotas(&HashMap::new()),
+            )?;
             fs::write(&output_bin, frame.packed_bytes())?;
             fs::write(&output_png, frame.png_bytes()?)?;
             println!(
@@ -121,7 +124,8 @@ fn sync(
 
     apply_account_labels(&mut accounts, &config.account_labels)?;
     let generated_at = now()?;
-    let frame = render_paid_accounts(&accounts, generated_at, registry.active_free_quota())?;
+    let free = registry.free_quotas(&config.account_labels);
+    let frame = render_paid_accounts(&accounts, generated_at, &free)?;
     let manifest = build_manifest(&frame, generated_at);
     write_local_state(&config.state_directory, &frame, &manifest)?;
     if let Some(publisher) = &config.publisher {
@@ -450,10 +454,10 @@ mod tests {
             observed_at,
         )
         .unwrap();
-        assert_eq!(
-            registry.active_free_quota(),
-            Some(note4c_codex_quota_dashboard::quota_relay::ActiveFreeQuota::Unknown)
-        );
+        let free = registry.free_quotas(&HashMap::new());
+        assert_eq!(free.len(), 2);
+        assert!(free[0].active);
+        assert_eq!(free[0].window, None);
         assert!(quotas.iter().all(|quota| !quota.active));
         assert_eq!(quotas[0].observed_at, observed_at);
         assert_eq!(quotas[0].five_hour_remaining_percent, 76);
